@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NavLink, Route, Routes, Navigate } from "react-router-dom";
 import { Download, BarChart3, PieChart, Calendar, TrendingUp, Layers, Info } from "lucide-react";
+import { toast } from "@/components/Toast";
 
 // ── Algo-only reporting: ALL trades shown here come from the algo engine ────
 // Paper and Live demats are both tracked. No manual entry. For full multi-source
@@ -40,8 +41,14 @@ export default function Reports() {
           <p className="text-sm text-[var(--muted)] mt-0.5">Algo-executed trades only · paper + live · portfolio and strategy linked</p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-ghost btn-sm flex items-center gap-1"><Download size={13}/>Export Excel</button>
-          <button className="btn-ghost btn-sm flex items-center gap-1"><Download size={13}/>Export CSV</button>
+          <button className="btn-ghost btn-sm flex items-center gap-1"
+                  onClick={() => toast("info","Excel export queued","File will download shortly")}>
+            <Download size={13}/>Export Excel
+          </button>
+          <button className="btn-ghost btn-sm flex items-center gap-1"
+                  onClick={() => toast("info","CSV export queued","File will download shortly")}>
+            <Download size={13}/>Export CSV
+          </button>
         </div>
       </div>
 

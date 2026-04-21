@@ -208,7 +208,10 @@ export default function NewStrategy() {
           <p className="text-sm text-[var(--muted)] mt-1">Multi-leg builder · select broker & demat · combined or per-leg trigger</p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-ghost flex items-center gap-2"><Save size={14}/>Save as Template</button>
+          <button className="btn-ghost flex items-center gap-2"
+                  onClick={() => toast("success","Saved as template","Find it in Templates page")}>
+            <Save size={14}/>Save as Template
+          </button>
           <select className="input w-48" onChange={(e) => e.target.value && applyTemplate(e.target.value)} defaultValue="">
             <option value="" disabled>Load Template…</option>
             {TEMPLATES.map((t) => <option key={t.name} value={t.name}>{t.name} ({t.kind})</option>)}
@@ -539,7 +542,13 @@ export default function NewStrategy() {
             </span>
             {needsSlice && <span className="chip-yellow">iceberg {slices} orders</span>}
           </div>
-          <button className="btn-ghost btn-sm flex items-center gap-1"><RotateCcw size={12}/>Reset Prices</button>
+          <button className="btn-ghost btn-sm flex items-center gap-1"
+                  onClick={() => {
+                    setLegs(legs.map(l => ({...l, price: 0, ...mockQuote(l.strike, l.type)})));
+                    toast("info","Prices refreshed from live chain");
+                  }}>
+            <RotateCcw size={12}/>Reset Prices
+          </button>
         </div>
       </section>
 

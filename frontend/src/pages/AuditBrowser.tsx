@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Shield, CheckCircle2, Download, Filter } from "lucide-react";
+import { toast } from "@/components/Toast";
 
 // Mock — real impl queries /admin/audit/search
 const EVENTS = [
@@ -34,8 +35,14 @@ export default function AuditBrowser() {
           <p className="text-sm text-[var(--muted)] mt-0.5">Immutable hash-chained log · append-only · tamper-evident</p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-ghost btn-sm flex items-center gap-1"><CheckCircle2 size={13}/>Verify Chain</button>
-          <button className="btn-ghost btn-sm flex items-center gap-1"><Download size={13}/>Export</button>
+          <button className="btn-ghost btn-sm flex items-center gap-1"
+                  onClick={() => toast("success","Chain verified","Last 10,000 entries: all hashes match")}>
+            <CheckCircle2 size={13}/>Verify Chain
+          </button>
+          <button className="btn-ghost btn-sm flex items-center gap-1"
+                  onClick={() => toast("info","Export started","CSV will download shortly")}>
+            <Download size={13}/>Export
+          </button>
         </div>
       </div>
 

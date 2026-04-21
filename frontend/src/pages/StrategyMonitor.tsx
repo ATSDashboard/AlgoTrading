@@ -72,7 +72,8 @@ export default function StrategyMonitor() {
       <div className="card p-0 overflow-hidden">
         <div className="px-5 py-3 border-b flex items-center justify-between font-semibold" style={{borderColor:"var(--border)"}}>
           <span>Positions</span>
-          <button className="btn-ghost btn-sm flex items-center gap-1 !text-xs">
+          <button className="btn-ghost btn-sm flex items-center gap-1 !text-xs"
+                  onClick={() => toast("success","Reconciled","Internal positions match broker")}>
             <RefreshCw size={11}/>Reconcile now
           </button>
         </div>

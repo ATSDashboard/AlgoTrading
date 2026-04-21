@@ -6,6 +6,8 @@
  */
 import { useState } from "react";
 import { Plus, X, Save, Zap, Filter as FilterIcon, Target } from "lucide-react";
+import FormModal from "./FormModal";
+import { toast } from "./Toast";
 
 type Filter = {
   id: string;
@@ -62,7 +64,7 @@ export default function StrikeSelectorBuilder() {
     {filter: "DISTANCE_PERCENT", params: {min: 3}},
     {filter: "PREMIUM_PER_LEG", params: {min: 0.8}},
   ]});
-  const [name, setName] = useState("My Rule v1");
+  const [saveOpen, setSaveOpen] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -85,8 +87,23 @@ export default function StrikeSelectorBuilder() {
             <option value="">Load preset…</option>
             {PRESETS.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
           </select>
-          <button className="btn-ghost btn-sm flex items-center gap-1"><Save size={12}/>Save</button>
-          <button className="btn-primary btn-sm flex items-center gap-1"><Zap size={12}/>Preview</button>
+          <button className="btn-ghost btn-sm flex items-center gap-1" onClick={() => setSaveOpen(true)}>
+            <Save size={12}/>Save
+          </button>
+          <button className="btn-primary btn-sm flex items-center gap-1"
+                  onClick={() => toast("info","Re-evaluating against live chain…","3 candidates passed · scroll down")}>
+            <Zap size={12}/>Preview
+          </button>
+          <FormModal open={saveOpen} title="Save rule as preset"
+            fields={[
+              {name:"name", label:"Preset name", type:"text", required:true, placeholder:"My Deep OTM Rule v2"},
+              {name:"description", label:"Notes (optional)", type:"textarea"},
+              {name:"applies_to", label:"Use for", type:"select", required:true,
+               options:["Entry rule","Exit rule","Both entry and exit"], defaultValue:"Entry rule"},
+            ]}
+            submitLabel="Save preset"
+            onSubmit={(v) => {setSaveOpen(false); toast("success","Preset saved", v.name);}}
+            onCancel={() => setSaveOpen(false)}/>
         </div>
       </div>
 
@@ -258,7 +275,8 @@ function PreviewRow({strikes, combined, cushion, per_cr, pass}:
       <span className="text-[var(--muted)]">combined</span><span className="font-mono">{combined}</span>
       <span className="text-[var(--muted)]">cushion</span><span className="font-mono">{cushion}</span>
       <span className="text-[var(--muted)]">per ₹1Cr</span><span className="font-mono text-[var(--success)]">{per_cr}</span>
-      {pass && <button className="btn-primary btn-sm !text-[10px]">Use</button>}
+      {pass && <button className="btn-primary btn-sm !text-[10px]"
+                       onClick={() => toast("success","Loaded into Trade", strikes)}>Use</button>}
     </div>
   );
 }

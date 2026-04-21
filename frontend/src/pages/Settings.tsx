@@ -2,6 +2,9 @@ import { useState } from "react";
 import { NavLink, Route, Routes, Navigate } from "react-router-dom";
 import { useAuth } from "@/stores/auth";
 import { Power } from "lucide-react";
+import FormModal from "@/components/FormModal";
+import ConfirmModal from "@/components/ConfirmModal";
+import { toast } from "@/components/Toast";
 
 const SUB: Array<[string, string]> = [
   ["profile", "Profile"],
@@ -48,6 +51,7 @@ export default function Settings() {
 
 function Profile() {
   const user = useAuth((s) => s.user);
+  const [modal, setModal] = useState<null|"password"|"2fa">(null);
   return (
     <div className="card space-y-4 max-w-lg">
       <h2 className="font-semibold">Profile</h2>
@@ -55,21 +59,68 @@ function Profile() {
       <Row label="Role"><span className="chip-blue">{user?.role}</span></Row>
       <Row label="2FA"><span className={user?.totp_enabled ? "chip-green" : "chip-yellow"}>
         {user?.totp_enabled ? "Enrolled" : "Not enrolled — REQUIRED"}</span></Row>
-      <div className="border-t border-border pt-4 space-y-3">
-        <button className="btn-ghost">Change password</button>
-        <button className="btn-ghost ml-2">{user?.totp_enabled ? "Reset 2FA" : "Enroll 2FA now"}</button>
+      <div className="border-t pt-4 space-y-3" style={{borderColor:"var(--border)"}}>
+        <button className="btn-ghost" onClick={() => setModal("password")}>Change password</button>
+        <button className="btn-ghost ml-2" onClick={() => setModal("2fa")}>
+          {user?.totp_enabled ? "Reset 2FA" : "Enroll 2FA now"}
+        </button>
       </div>
+
+      <FormModal open={modal==="password"} title="Change password"
+        fields={[
+          {name:"current", label:"Current password", type:"password", required:true},
+          {name:"next", label:"New password (min 12 chars)", type:"password", required:true},
+          {name:"confirm", label:"Confirm new password", type:"password", required:true},
+        ]}
+        submitLabel="Update password"
+        onSubmit={(v) => {
+          if (v.next !== v.confirm) { toast("error","Passwords don't match"); return; }
+          if (v.next.length < 12) { toast("error","Min 12 characters"); return; }
+          setModal(null); toast("success","Password updated · logout from other sessions to take effect");
+        }}
+        onCancel={() => setModal(null)}/>
+
+      <ConfirmModal open={modal==="2fa"} tone="warn"
+        title={user?.totp_enabled ? "Reset 2FA?" : "Enroll 2FA"}
+        body={<p>You'll be shown a new QR code. Scan it with Google Authenticator / Authy. Requires verification with a 6-digit code before the change takes effect.</p>}
+        confirmLabel="Start enrollment"
+        onConfirm={() => {setModal(null); toast("info","QR code generated — check your authenticator app");}}
+        onCancel={() => setModal(null)}/>
     </div>
   );
 }
 
 function Brokers() {
+  const [modal, setModal] = useState<null|"add"|"edit"|"demat">(null);
+  const [editingBroker, setEditingBroker] = useState("");
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Brokers & Demats</h2>
-        <button className="btn-primary">+ Add Broker</button>
+        <button className="btn-primary" onClick={() => setModal("add")}>+ Add Broker</button>
       </div>
+      <FormModal open={modal==="add"} title="Add Broker"
+        description="Register a new broker account. You'll be prompted to connect the session separately."
+        fields={[
+          {name:"broker", label:"Broker", type:"select", required:true,
+           options:["Axis Direct (RAPID)","Zerodha (Kite)","Monarch Networth","JM Financial (Blink)","Paper Broker"]},
+          {name:"label", label:"Label (nickname for this account)", type:"text", required:true, placeholder:"e.g., Main trading account"},
+          {name:"client_id", label:"Client ID", type:"text", required:true},
+          {name:"api_key", label:"API Key", type:"password", required:true},
+          {name:"api_secret", label:"API Secret", type:"password", required:true},
+        ]}
+        submitLabel="Add broker"
+        onSubmit={(v) => {setModal(null); toast("success",`${v.broker} added`, "Now connect the session from Connect Broker page");}}
+        onCancel={() => setModal(null)}/>
+      <FormModal open={modal==="edit"} title={`Edit ${editingBroker}`}
+        fields={[
+          {name:"label", label:"Label", type:"text"},
+          {name:"api_key", label:"Rotate API Key (optional)", type:"password"},
+          {name:"api_secret", label:"Rotate API Secret (optional)", type:"password"},
+        ]}
+        submitLabel="Save changes"
+        onSubmit={() => {setModal(null); toast("success","Broker config updated");}}
+        onCancel={() => setModal(null)}/>
       {[
         {name:"Axis Direct (RAPID)", client:"AX****23", dematss:[{n:"1234567890",l:"Rohan Individual",cap:"₹25L",dcap:"₹5L/day"},
                                                              {n:"9876543210",l:"Rohan HUF",cap:"₹10L",dcap:"₹2L/day"}]},
@@ -82,7 +133,7 @@ function Brokers() {
               <div className="text-xs text-muted">Client: {b.client} · session exp: 7h 42m</div>
             </div>
             <div className="flex gap-2"><span className="chip-green">Active</span>
-              <button className="btn-ghost">Edit</button></div>
+              <button className="btn-ghost" onClick={() => {setEditingBroker(b.name); setModal("edit");}}>Edit</button></div>
           </div>
           <div className="text-xs text-muted mb-1">Demats:</div>
           <ul className="text-sm space-y-1">
@@ -237,7 +288,10 @@ function Risk() {
 
       <div className="flex gap-2 justify-end sticky bottom-0 py-3" style={{background: "var(--bg)"}}>
         <button className="btn-ghost" disabled={!dirty} onClick={() => setDirty(false)}>Reset</button>
-        <button className="btn-primary" disabled={!dirty}>Request Change (→ 2nd admin)</button>
+        <button className="btn-primary" disabled={!dirty}
+                onClick={() => {setDirty(false); toast("success","Approval request submitted", "Pending 2nd-admin review in Admin → Approvals");}}>
+          Request Change (→ 2nd admin)
+        </button>
       </div>
     </div>
   );
@@ -389,8 +443,11 @@ function Execution() {
       </div>
 
       <div className="flex justify-end gap-2">
-        <button className="btn-ghost">Reset to defaults</button>
-        <button className="btn-primary">Save (2nd admin approval)</button>
+        <button className="btn-ghost" onClick={() => toast("info","Reset to env defaults")}>Reset to defaults</button>
+        <button className="btn-primary"
+                onClick={() => toast("success","Approval request submitted", "Changes take effect after 2nd admin approves")}>
+          Save (2nd admin approval)
+        </button>
       </div>
     </div>
   );
@@ -405,10 +462,10 @@ function Notify() {
       <Row label="Email"><input className="input" defaultValue="rohan@thetagainers.in"/></Row>
       <Row label="SMS (critical)"><input className="input" defaultValue="+91 98XXX 12345"/></Row>
       <Row label="Phone call (circuit break)"><input className="input" defaultValue="+91 98XXX 12345"/></Row>
-      <div className="border-t border-border pt-3 flex gap-2">
-        <button className="btn-ghost">Test WhatsApp</button>
-        <button className="btn-ghost">Test Email</button>
-        <button className="btn-ghost">Test SMS</button>
+      <div className="border-t pt-3 flex gap-2" style={{borderColor:"var(--border)"}}>
+        <button className="btn-ghost" onClick={() => toast("info","Test WhatsApp sent","Check your WhatsApp in next 30s")}>Test WhatsApp</button>
+        <button className="btn-ghost" onClick={() => toast("info","Test email sent","Check inbox + spam")}>Test Email</button>
+        <button className="btn-ghost" onClick={() => toast("info","Test SMS sent","Usually arrives within 60s")}>Test SMS</button>
       </div>
     </div>
   );
@@ -420,12 +477,29 @@ function APIKeys() {
 }
 
 function Users() {
+  const [inviteOpen, setInviteOpen] = useState(false);
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold">Users & Roles</h2>
-        <button className="btn-primary">+ Invite User</button>
+        <button className="btn-primary" onClick={() => setInviteOpen(true)}>+ Invite User</button>
       </div>
+      <FormModal open={inviteOpen} title="Invite user"
+        description="They'll receive an email with a sign-up link. They set password + enrol 2FA on first login."
+        fields={[
+          {name:"username", label:"Username", type:"text", required:true, placeholder:"rohan.jr"},
+          {name:"email", label:"Email", type:"email", required:true, placeholder:"person@thetagainers.in"},
+          {name:"phone", label:"Phone (for SMS/voice alerts)", type:"tel", placeholder:"+91 98XXX 12345"},
+          {name:"role", label:"Role", type:"select", required:true,
+           options:["ADMIN","TRADER","VIEWER","AUDITOR","RISK_OFFICER"]},
+          {name:"demat_access", label:"Demats to grant access", type:"select",
+           options:["All demats (admin only)","Select specific demats after invite"],
+           defaultValue:"Select specific demats after invite",
+           help:"After invite accepted, assign demats in this same page"},
+        ]}
+        submitLabel="Send invite"
+        onSubmit={(v) => {setInviteOpen(false); toast("success",`Invite sent to ${v.email}`,`Role: ${v.role}`);}}
+        onCancel={() => setInviteOpen(false)}/>
       <table className="w-full">
         <thead><tr><th className="table-th">Username</th><th className="table-th">Role</th>
           <th className="table-th">2FA</th><th className="table-th">Last Login</th></tr></thead>

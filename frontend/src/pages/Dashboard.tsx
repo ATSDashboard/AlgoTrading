@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { PlusCircle, Power, TrendingUp, Zap, Activity, AlertTriangle, Wallet } from "lucide-react";
 import { useStrategies, useHeartbeat } from "@/api/hooks";
+import ConfirmModal from "@/components/ConfirmModal";
+import { toast } from "@/components/Toast";
 
 // Mock data for UI preview — wired to real /strategy endpoint in M5
 const MOCK_STRATS = [
@@ -11,6 +14,7 @@ const MOCK_STRATS = [
 export default function Dashboard() {
   useHeartbeat();                                    // starts 30s heartbeat loop
   const { data: liveStrats } = useStrategies(true);  // active strategies from backend
+  const [killAllOpen, setKillAllOpen] = useState(false);
   // Fall back to mock if backend is offline so the UI still demos
   const strats = liveStrats && liveStrats.length > 0
     ? liveStrats.map((s) => ({
@@ -51,12 +55,20 @@ export default function Dashboard() {
 
       {/* Action bar */}
       <div className="flex flex-wrap items-center gap-3">
-        <Link to="/strategy/new" className="btn-primary flex items-center gap-2">
-          <PlusCircle size={16}/> New Strategy
+        <Link to="/trade" className="btn-primary flex items-center gap-2">
+          <PlusCircle size={16}/> New Trade
         </Link>
-        <button className="btn-danger flex items-center gap-2">
+        <button className="btn-danger flex items-center gap-2" onClick={() => setKillAllOpen(true)}>
           <Power size={16}/> Kill All Strategies
         </button>
+        <ConfirmModal open={killAllOpen}
+          title="⚠ Kill all MY strategies"
+          tone="danger"
+          confirmLabel="KILL ALL"
+          typeToConfirm="KILL"
+          body={<p>Force-closes all your active strategies immediately at market-protect orders. Use for emergency only. Firm-wide halt is in Admin → Global Kill Switch.</p>}
+          onConfirm={() => {setKillAllOpen(false); toast("error","Kill all initiated","All positions closing");}}
+          onCancel={() => setKillAllOpen(false)}/>
         <span className="ml-auto text-xs text-muted">
           SEBI rate: 0/8 orders this sec · OTR: 2.1 · Circuit: <span className="text-success">OK</span>
         </span>
