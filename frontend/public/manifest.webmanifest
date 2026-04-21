@@ -1,0 +1,21 @@
+{
+  "name": "Theta Gainers Algo",
+  "short_name": "Theta Gainers",
+  "description": "Multi-broker options algo execution + reporting",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0d12",
+  "theme_color": "#5b9dff",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "categories": ["finance", "productivity"],
+  "shortcuts": [
+    { "name": "New Trade", "url": "/trade", "icons": [{"src": "/icon-192.png", "sizes": "192x192"}] },
+    { "name": "Dashboard", "url": "/", "icons": [{"src": "/icon-192.png", "sizes": "192x192"}] },
+    { "name": "Reports", "url": "/reports", "icons": [{"src": "/icon-192.png", "sizes": "192x192"}] }
+  ]
+}
