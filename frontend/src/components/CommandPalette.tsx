@@ -5,6 +5,7 @@ import { Search, ArrowRight, Power, PlusCircle, Sparkles, History, Settings, Shi
 const ACTIONS = [
   { id: "trade",     label: "Trade",                        hint: "Create multi-leg trade",          icon: PlusCircle, path: "/trade",              kbd: "N T" },
   { id: "dashboard", label: "Dashboard",                   hint: "P&L, margins, active strategies",icon: Activity,   path: "/",                   kbd: "G D" },
+  { id: "analytics", label: "Deep OTM Analytics",          hint: "Strike recommendations + insights",icon: Sparkles, path: "/analytics",          kbd: "G A" },
   { id: "history",   label: "History",                     hint: "Past strategies + exports",      icon: History,    path: "/history",            kbd: "G H" },
   { id: "brokers",   label: "Settings → Brokers & Demats", hint: "Manage broker sessions",         icon: Settings,   path: "/settings/brokers" },
   { id: "risk",      label: "Settings → Risk & Limits",    hint: "Kill switches, caps",            icon: Shield,     path: "/settings/risk" },

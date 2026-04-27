@@ -10,6 +10,7 @@ import Settings from "@/pages/Settings";
 import Admin from "@/pages/Admin";
 import AuditBrowser from "@/pages/AuditBrowser";
 import Templates from "@/pages/Templates";
+import Analytics from "@/pages/Analytics";
 import Layout from "@/components/Layout";
 import Toaster from "@/components/Toast";
 import CommandPalette from "@/components/CommandPalette";
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/strategy/:id" element={<StrategyMonitor />} />
         <Route path="/reports/*" element={<Reports />} />
         <Route path="/templates" element={<Templates />} />
+        <Route path="/analytics" element={<Analytics />} />
         <Route path="/settings/*" element={<Settings />} />
         <Route path="/admin/audit" element={<AuditBrowser />} />
         <Route path="/admin/*" element={<Admin />} />

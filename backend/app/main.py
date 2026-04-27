@@ -17,7 +17,7 @@ from app.data.scheduler import build_scheduler
 from app.health.routes import router as health_router
 from app.strategy.routes import router as strategy_router
 from app.strike_selector.routes import router as strike_selector_router
-# Phase-2 modules live in ../Theta Gainers — Future Modules/ (ML, analytics Deep OTM)
+from app.analytics.routes import router as analytics_router
 # from app.admin.routes import router as admin_router
 
 settings = get_settings()
@@ -75,6 +75,7 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(data_router, prefix="/data", tags=["data"])
 app.include_router(strategy_router, prefix="/strategy", tags=["strategy"])
 app.include_router(strike_selector_router, prefix="/strike-selector", tags=["strike-selector"])
+app.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
 # Subsequent milestones:
 # app.include_router(admin_router, prefix="/admin", tags=["admin"])
 
