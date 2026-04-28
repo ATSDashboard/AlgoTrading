@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertCircle, Plus, Trash2, Copy, Shield, Sparkles, Save, RotateCcw, Calculator,
-  ChevronDown, BarChart2, Activity, Zap,
+  ChevronDown, BarChart2, Activity, Zap, Rocket,
 } from "lucide-react";
 import ConfirmModal from "@/components/ConfirmModal";
 import { toast } from "@/components/Toast";
@@ -141,6 +141,48 @@ export default function NewStrategy() {
 
   const lotSize = underlying === "NIFTY" ? 65 : 20;
   const freeze = underlying === "NIFTY" ? 1800 : 1000;
+  const strikeGrid = underlying === "NIFTY" ? 50 : 100;
+  // Live spot — TODO replace with /data/quote feed. Keep in sync with mockQuote().
+  const spot = underlying === "NIFTY" ? 24812 : 81204;
+  // Rough margin per 1 lot short strangle (₹). Overridden by /data/margin in prod.
+  const marginPerLot = underlying === "NIFTY" ? 105_000 : 145_000;
+
+  // ── Default Strategy rule ────────────────────────────────────────────
+  // Rule: sell CE + PE, both at MIN 2.5% OTM, rounded to nearest grid AWAY
+  // from spot (more OTM, never closer). Target P&L: ₹5,000 per ₹1Cr margin.
+  const DEFAULT_DISTANCE_PCT = 2.5;
+  const DEFAULT_TARGET_PER_CR = 5_000;
+
+  function defaultStrikes(): {ce: number; pe: number} {
+    const ceRaw = spot * (1 + DEFAULT_DISTANCE_PCT / 100);
+    const peRaw = spot * (1 - DEFAULT_DISTANCE_PCT / 100);
+    return {
+      ce: Math.ceil(ceRaw / strikeGrid) * strikeGrid,   // round away (up)
+      pe: Math.floor(peRaw / strikeGrid) * strikeGrid,  // round away (down)
+    };
+  }
+
+  function applyDefaultStrategy(lots = 1) {
+    const { ce, pe } = defaultStrikes();
+    const ceQ = mockQuote(ce, "CE");
+    const peQ = mockQuote(pe, "PE");
+    setLegs([
+      fullLeg({side:"S", strike:ce, type:"CE", lots, price: ceQ.bid}),
+      fullLeg({side:"S", strike:pe, type:"PE", lots, price: peQ.bid}),
+    ]);
+    setName(`Default Deep OTM · ${underlying} · ${ce}CE / ${pe}PE`);
+    // Target = ₹5K per Cr × (lots × marginPerLot / 1Cr). Combined credit ≈ target.
+    const totalMargin = lots * marginPerLot;
+    const target = Math.round(DEFAULT_TARGET_PER_CR * totalMargin / 1_00_00_000);
+    const combined = Math.round((ceQ.bid + peQ.bid) * lotSize * lots);
+    setTarget(String(Math.max(target, combined > 0 ? Math.round(combined * 0.6) : target)));
+    setSl(String(Math.round(target * 1.5)));  // 1.5× SL to target ratio default
+    setTriggerMode("NONE");                    // direct entry — trader just executes
+    toast("info", "Default strategy loaded",
+          `${ce}CE + ${pe}PE · ${lots} lot · target ₹${target.toLocaleString("en-IN")}. Edit if needed, then Execute.`);
+  }
+
+  const defaultStrikesPreview = useMemo(() => defaultStrikes(), [underlying, spot]);
 
   function addLeg() {
     const last = legs[legs.length - 1];
@@ -218,6 +260,67 @@ export default function NewStrategy() {
           </select>
         </div>
       </div>
+
+      {/* ── Default Strategy CTA — one-click safe entry ────────────────── */}
+      <section className="card border-2"
+               style={{borderColor:"color-mix(in srgb, var(--accent) 50%, transparent)",
+                       background:"color-mix(in srgb, var(--accent) 6%, var(--panel))"}}>
+        <div className="flex items-start gap-4 flex-wrap">
+          <div className="flex-1 min-w-[260px]">
+            <div className="flex items-center gap-2 mb-1">
+              <Rocket size={18} className="text-[var(--accent)]"/>
+              <h2 className="font-semibold text-base">Default Strategy · Deep OTM Strangle</h2>
+              <span className="chip-blue">RECOMMENDED</span>
+            </div>
+            <div className="text-xs text-[var(--muted)] leading-relaxed">
+              Sell CE + PE at <b>min {DEFAULT_DISTANCE_PCT}% OTM</b> (rounded to nearest grid, away from spot).
+              Target <b>₹{DEFAULT_TARGET_PER_CR.toLocaleString("en-IN")} per ₹1Cr margin</b>.
+              One click, no manual entry — eliminates strike/qty mistakes.
+            </div>
+            <div className="mt-2 flex items-center gap-4 text-xs flex-wrap">
+              <span className="text-[var(--muted)]">Spot</span>
+              <span className="font-mono">{spot.toLocaleString("en-IN")}</span>
+              <span className="text-[var(--muted)]">→ CE</span>
+              <span className="font-mono font-semibold">{defaultStrikesPreview.ce}</span>
+              <span className="text-[var(--muted)]">PE</span>
+              <span className="font-mono font-semibold">{defaultStrikesPreview.pe}</span>
+              <span className="text-[var(--muted)]">·</span>
+              <span className="text-[var(--muted)]">Lot</span>
+              <span className="font-mono">{lotSize}u</span>
+              <span className="text-[var(--muted)]">·</span>
+              <span className="text-[var(--muted)]">Margin/lot</span>
+              <span className="font-mono">~₹{(marginPerLot/1000).toFixed(0)}K</span>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 items-stretch min-w-[220px]">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-[var(--muted)] whitespace-nowrap">Lots</label>
+              <select id="default-lots" defaultValue="1"
+                      className="input !py-1.5 text-sm font-mono flex-1">
+                {[1,2,3,5,10,15,20].map(n => <option key={n} value={n}>{n} lot{n>1?"s":""} ({(n*lotSize)}u)</option>)}
+              </select>
+            </div>
+            <button className="btn-primary flex items-center justify-center gap-2 py-2.5"
+                    onClick={() => {
+                      const sel = document.getElementById("default-lots") as HTMLSelectElement;
+                      applyDefaultStrategy(+(sel?.value ?? "1"));
+                    }}>
+              <Rocket size={14}/> Load Default Strategy
+            </button>
+            <button className="btn-danger btn-sm flex items-center justify-center gap-1"
+                    onClick={() => {
+                      const sel = document.getElementById("default-lots") as HTMLSelectElement;
+                      applyDefaultStrategy(+(sel?.value ?? "1"));
+                      setTimeout(() => setConfirmOpen("execute-now"), 100);
+                    }}>
+              <Zap size={14}/> Load + Execute Now
+            </button>
+            <div className="text-[10px] text-[var(--muted)] text-center">
+              Pre-fills legs below — edit before execute if needed
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Broker + Demat selection */}
       <section className="card space-y-3">
@@ -420,10 +523,11 @@ export default function NewStrategy() {
                   ))}
                 </div>
 
-                {/* Lots */}
+                {/* Lots (qty = lots × lotSize, enforced — no raw-units input) */}
                 <select className="input !py-1.5 text-sm font-mono" value={l.lots}
-                        onChange={(e) => update(l.id, {lots: +e.target.value})}>
-                  {Array.from({length: 10}).map((_, n) => <option key={n+1} value={n+1}>{n+1}</option>)}
+                        onChange={(e) => update(l.id, {lots: +e.target.value})}
+                        title={`1 lot = ${lotSize} units (${underlying} exchange). Total qty auto-snaps to lot multiples.`}>
+                  {Array.from({length: 30}).map((_, n) => <option key={n+1} value={n+1}>{n+1}</option>)}
                 </select>
 
                 {/* Order kind */}
