@@ -261,16 +261,94 @@ export default function NewStrategy() {
         </div>
       </div>
 
+      {/* ── Broker & Demat — GLOBAL: applies to every strategy on this page ─── */}
+      <section className="card space-y-3"
+               style={{borderTop:"3px solid var(--accent)"}}>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Shield size={16} className="text-[var(--accent)]"/>
+            <h2 className="font-semibold">Broker & Demat</h2>
+            <span className="chip-blue text-[10px]">APPLIES TO ALL · DEFAULT + MANUAL</span>
+          </div>
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input type="checkbox" checked={multiDematMode}
+                   onChange={(e) => setMultiDematMode(e.target.checked)}/>
+            Multi-demat (SOR across accounts)
+          </label>
+        </div>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <label className="label">Broker</label>
+            <select className="input" value={selectedBroker}
+                    onChange={(e) => {
+                      setSelectedBroker(e.target.value);
+                      const first = BROKER_DEMATS[e.target.value]?.find(d => d.assigned);
+                      setSelectedDemats(first ? [first.id] : []);
+                    }}>
+              <option value="paper">Paper Broker (mock)</option>
+              <option value="axis">Axis Direct (RAPID)</option>
+              <option value="zerodha">Zerodha (Kite Connect)</option>
+              <option value="monarch">Monarch Networth</option>
+              <option value="jm">JM Financial (Blink)</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Demat Account{multiDematMode ? "s (select multiple)" : ""}</label>
+            {multiDematMode ? (
+              <div className="space-y-2">
+                {(BROKER_DEMATS[selectedBroker] ?? []).map(d => (
+                  <label key={d.id}
+                         className="flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition"
+                         style={{borderColor: selectedDemats.includes(d.id) ? "var(--accent)" : "var(--border)",
+                                 background: selectedDemats.includes(d.id) ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
+                                 opacity: d.assigned ? 1 : 0.4, cursor: d.assigned ? "pointer" : "not-allowed"}}>
+                    <input type="checkbox" checked={selectedDemats.includes(d.id)}
+                           disabled={!d.assigned}
+                           onChange={() => d.assigned && toggleDemat(d.id)}/>
+                    <div className="flex-1">
+                      <div className="text-sm font-mono">{d.id}</div>
+                      <div className="text-xs text-[var(--muted)]">{d.label}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-[var(--muted)]">Daily cap</div>
+                      <div className="text-xs font-mono">{d.cap}</div>
+                    </div>
+                    {!d.assigned && <span className="chip-red">Not assigned</span>}
+                  </label>
+                ))}
+                <div className="text-[10px] text-[var(--muted)]">
+                  Orders will be split across selected demats by free margin (Smart Order Routing). Admin assigns demat access in Settings → Users.
+                </div>
+              </div>
+            ) : (
+              <select className="input" value={selectedDemats[0] ?? ""}
+                      onChange={(e) => setSelectedDemats([e.target.value])}>
+                {(BROKER_DEMATS[selectedBroker] ?? []).filter(d => d.assigned).map(d => (
+                  <option key={d.id} value={d.id}>{d.id} — {d.label} (cap {d.cap})</option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+        <div className="text-[10px] text-[var(--muted)] flex items-center gap-1.5 pt-1 border-t" style={{borderColor:"var(--border)"}}>
+          <AlertCircle size={11}/>
+          This selection routes <b>every order</b> placed from this page — Default Strategy, manual legs, Execute Now, and trigger-based starts.
+        </div>
+      </section>
+
       {/* ── Default Strategy CTA — one-click safe entry ────────────────── */}
       <section className="card border-2"
                style={{borderColor:"color-mix(in srgb, var(--accent) 50%, transparent)",
                        background:"color-mix(in srgb, var(--accent) 6%, var(--panel))"}}>
         <div className="flex items-start gap-4 flex-wrap">
           <div className="flex-1 min-w-[260px]">
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
               <Rocket size={18} className="text-[var(--accent)]"/>
               <h2 className="font-semibold text-base">Default Strategy · Deep OTM Strangle</h2>
               <span className="chip-blue">RECOMMENDED</span>
+              <span className="text-[10px] text-[var(--muted)] ml-auto">
+                Routes via <b className="text-[var(--ink)] font-mono">{selectedBroker.toUpperCase()}</b> · {selectedDemats.length === 1 ? selectedDemats[0] : `${selectedDemats.length} demats (SOR)`}
+              </span>
             </div>
             <div className="text-xs text-[var(--muted)] leading-relaxed">
               Sell CE + PE at <b>min {DEFAULT_DISTANCE_PCT}% OTM</b> (rounded to nearest grid, away from spot).
@@ -318,73 +396,6 @@ export default function NewStrategy() {
             <div className="text-[10px] text-[var(--muted)] text-center">
               Pre-fills legs below — edit before execute if needed
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Broker + Demat selection */}
-      <section className="card space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Broker & Demat</h2>
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
-            <input type="checkbox" checked={multiDematMode}
-                   onChange={(e) => setMultiDematMode(e.target.checked)}/>
-            Multi-demat (SOR across accounts)
-          </label>
-        </div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <label className="label">Broker</label>
-            <select className="input" value={selectedBroker}
-                    onChange={(e) => {
-                      setSelectedBroker(e.target.value);
-                      const first = BROKER_DEMATS[e.target.value]?.find(d => d.assigned);
-                      setSelectedDemats(first ? [first.id] : []);
-                    }}>
-              <option value="paper">Paper Broker (mock)</option>
-              <option value="axis">Axis Direct (RAPID)</option>
-              <option value="zerodha">Zerodha (Kite Connect)</option>
-              <option value="monarch">Monarch Networth</option>
-              <option value="jm">JM Financial (Blink)</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">Demat Account{multiDematMode ? "s (select multiple)" : ""}</label>
-            {multiDematMode ? (
-              <div className="space-y-2">
-                {(BROKER_DEMATS[selectedBroker] ?? []).map(d => (
-                  <label key={d.id}
-                         className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition ${
-                           !d.assigned ? "opacity-40 cursor-not-allowed" : selectedDemats.includes(d.id) ? "" : ""
-                         }`}
-                         style={{borderColor: selectedDemats.includes(d.id) ? "var(--accent)" : "var(--border)",
-                                 background: selectedDemats.includes(d.id) ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent"}}>
-                    <input type="checkbox" checked={selectedDemats.includes(d.id)}
-                           disabled={!d.assigned}
-                           onChange={() => d.assigned && toggleDemat(d.id)}/>
-                    <div className="flex-1">
-                      <div className="text-sm font-mono">{d.id}</div>
-                      <div className="text-xs text-[var(--muted)]">{d.label}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs text-[var(--muted)]">Daily cap</div>
-                      <div className="text-xs font-mono">{d.cap}</div>
-                    </div>
-                    {!d.assigned && <span className="chip-red">Not assigned</span>}
-                  </label>
-                ))}
-                <div className="text-[10px] text-[var(--muted)]">
-                  Orders will be split across selected demats by free margin (Smart Order Routing). Admin assigns demat access in Settings → Users.
-                </div>
-              </div>
-            ) : (
-              <select className="input" value={selectedDemats[0] ?? ""}
-                      onChange={(e) => setSelectedDemats([e.target.value])}>
-                {(BROKER_DEMATS[selectedBroker] ?? []).filter(d => d.assigned).map(d => (
-                  <option key={d.id} value={d.id}>{d.id} — {d.label} (cap {d.cap})</option>
-                ))}
-              </select>
-            )}
           </div>
         </div>
       </section>
