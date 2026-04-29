@@ -12,6 +12,7 @@ import BrokerDematPicker, { ALL_BROKERS, BROKER_DEMATS } from "@/components/trad
 import EntryTimeWindow from "@/components/trade/EntryTimeWindow";
 import ExitRules from "@/components/trade/ExitRules";
 import DefaultStrategyCTA from "@/components/trade/DefaultStrategyCTA";
+import PremiumTrigger from "@/components/trade/PremiumTrigger";
 import { KV2 } from "@/components/trade/shared";
 
 type Side = "B" | "S";
@@ -427,11 +428,18 @@ export default function NewStrategy() {
           </button>
         </div>
 
-        {/* Column headers */}
-        <div className="grid grid-cols-[24px_56px_110px_128px_72px_72px_96px_80px_96px_84px] gap-2 text-[10px] uppercase tracking-wide text-[var(--muted)] px-1">
-          <span title="Include in combined trigger">∑</span>
-          <span>B/S</span><span>Expiry</span><span>Strike</span><span>Type</span><span>Lots</span>
-          <span>Order</span><span>LTP</span><span title="Per-leg LIMIT price; in Per-leg trigger mode this IS the per-leg premium threshold.">Trade Price</span><span className="text-right pr-1">Actions</span>
+        {/* Column headers — widths chosen so centered values align under their headers */}
+        <div className="grid grid-cols-[32px_60px_120px_140px_72px_64px_104px_72px_96px_96px] gap-2 text-[10px] uppercase tracking-wide text-[var(--muted)] px-2">
+          <span className="text-center" title="Include in combined trigger">∑</span>
+          <span className="text-center">B/S</span>
+          <span className="text-center">Expiry</span>
+          <span className="text-center">Strike</span>
+          <span className="text-center">Type</span>
+          <span className="text-center">Lots</span>
+          <span className="text-center">Order</span>
+          <span className="text-center">LTP</span>
+          <span className="text-center" title="Per-leg LIMIT price; in Per-leg trigger mode this IS the per-leg premium threshold.">Trade Price</span>
+          <span className="text-right pr-1">Actions</span>
         </div>
 
         {legs.map((l, i) => {
@@ -444,11 +452,13 @@ export default function NewStrategy() {
                  }`}
                  style={{background: "var(--panel-2)"}}>
 
-              <div className="grid grid-cols-[24px_56px_110px_128px_72px_72px_96px_80px_96px_84px] gap-2 items-center p-2">
+              <div className="grid grid-cols-[32px_60px_120px_140px_72px_64px_104px_72px_96px_96px] gap-2 items-center p-2">
                 {/* Include in combined */}
-                <input type="checkbox" checked={l.inCombinedTrigger}
-                       onChange={(e) => update(l.id, {inCombinedTrigger: e.target.checked})}
-                       title="Include this leg in the combined-premium trigger" className="cursor-pointer"/>
+                <div className="flex justify-center">
+                  <input type="checkbox" checked={l.inCombinedTrigger}
+                         onChange={(e) => update(l.id, {inCombinedTrigger: e.target.checked})}
+                         title="Include this leg in the combined-premium trigger" className="cursor-pointer"/>
+                </div>
 
                 {/* B/S */}
                 <div className="flex rounded-md overflow-hidden border" style={{borderColor:"var(--border)"}}>
@@ -495,14 +505,14 @@ export default function NewStrategy() {
                 </div>
 
                 {/* Lots (qty = lots × lotSize, enforced — no raw-units input) */}
-                <select className="input !py-1.5 text-sm font-mono" value={l.lots}
+                <select className="input !py-1.5 text-sm font-mono text-center" value={l.lots}
                         onChange={(e) => update(l.id, {lots: +e.target.value})}
                         title={`1 lot = ${lotSize} units (${underlying} exchange). Total qty auto-snaps to lot multiples.`}>
                   {Array.from({length: 30}).map((_, n) => <option key={n+1} value={n+1}>{n+1}</option>)}
                 </select>
 
                 {/* Order kind */}
-                <select className="input !py-1.5 text-xs" value={l.orderKind}
+                <select className="input !py-1.5 text-xs text-center" value={l.orderKind}
                         onChange={(e) => update(l.id, {orderKind: e.target.value as OrderKind})}
                         title="MARKET disabled on options for safety (SEBI + wide spreads)">
                   <option value="LIMIT">LIMIT</option>
@@ -511,7 +521,7 @@ export default function NewStrategy() {
                 </select>
 
                 {/* LTP only inline (bid/ask in expanded view) */}
-                <div className="text-sm font-mono font-semibold text-[var(--ink)] whitespace-nowrap">
+                <div className="text-sm font-mono font-semibold text-[var(--ink)] whitespace-nowrap text-center">
                   {l.ltp.toFixed(2)}
                 </div>
 
@@ -526,7 +536,7 @@ export default function NewStrategy() {
                          : "LIMIT price for the order."
                        }
                        onChange={(e) => update(l.id, {price: +e.target.value})}
-                       className={`input !py-1.5 text-sm font-mono disabled:opacity-40 disabled:cursor-not-allowed ${
+                       className={`input !py-1.5 text-sm font-mono text-center disabled:opacity-40 disabled:cursor-not-allowed ${
                          triggerMode === "SEPARATE" ? "!border-[var(--accent)]" : ""
                        }`}/>
 
@@ -644,160 +654,24 @@ export default function NewStrategy() {
       />
 
       {/* Premium Trigger (separate module — pairs with Strike Selector for auto trades) */}
-      <section className="card space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h2 className="font-semibold">Premium Trigger</h2>
-            <p className="text-[11px] text-[var(--muted)] mt-0.5">
-              Live entry gate — combined CE+PE or per-leg threshold.
-              {strikeMode === "auto" && <> Auto-trades fire only when <b>strike rule</b> ✓ <b>and</b> <b>premium trigger</b> ✓.</>}
-              {restrictByTime && <> Active only between <b>{entryFrom}</b>–<b>{entryTo}</b> IST.</>}
-            </p>
-          </div>
-          <div className="inline-flex rounded-lg p-0.5 border" style={{borderColor:"var(--border)", background:"var(--panel-2)"}}>
-            {(["COMBINED","PER_CR","SEPARATE","NONE"] as const).map((m) => (
-              <button key={m} type="button" onClick={() => {
-                        setTriggerMode(m);
-                        if ((m === "COMBINED" || m === "PER_CR") && legs.length > 2) {
-                          setLegs((L) => L.slice(0, 2));
-                          toast("info", "Trimmed to 2 legs", `${m === "COMBINED" ? "Combined ∑" : "Per ₹1Cr"} mode uses one CE + one PE only.`);
-                        }
-                      }}
-                      className="px-3 py-1.5 rounded-md text-xs font-semibold transition"
-                      style={triggerMode === m
-                        ? {background: "var(--panel)", color: "var(--ink)", boxShadow: "0 1px 2px rgba(0,0,0,0.08)"}
-                        : {background: "transparent", color: "var(--muted)"}}>
-                {m === "COMBINED" ? "Combined ∑" : m === "PER_CR" ? "Per ₹1Cr" : m === "SEPARATE" ? "Per-leg" : "Enter now"}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {triggerMode === "COMBINED" && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-4 flex-wrap">
-              <div>
-                <label className="label">Combined ≥ ₹ (sum of ∑-marked legs)</label>
-                <input className="input font-mono w-40" value={combinedTrigger}
-                       onChange={(e) => setCombinedTrigger(e.target.value)}/>
-              </div>
-              <div className="pt-5">
-                <div className="text-xs text-[var(--muted)]">Live sum of {legsInTrigger} legs</div>
-                <div className={`font-mono text-xl font-bold ${triggerMet ? "text-[var(--success)]" : ""}`}>
-                  ₹{combinedLive.toFixed(2)}
-                  {triggerMet && <Activity size={16} className="inline ml-2 animate-pulse"/>}
-                </div>
-              </div>
-              <div className="pt-5">
-                <div className="text-xs text-[var(--muted)]">Threshold</div>
-                <div className="font-mono text-xl">₹{combinedTrigger}</div>
-              </div>
-              <div className="pt-5">
-                <div className="text-xs text-[var(--muted)]">Status</div>
-                <div>{triggerMet ? <span className="chip-green">MET</span> : <span className="chip-yellow">Waiting</span>}</div>
-              </div>
-            </div>
-            <div className="text-xs text-[var(--muted)]">
-              Formula: Σ(SELL leg bid) − Σ(BUY leg ask) for all ∑-marked legs.
-              {legs.length > 2 && " Toggle the ∑ column on each leg above to pick which legs combine."}
-            </div>
-          </div>
-        )}
-
-        {triggerMode === "PER_CR" && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-4 flex-wrap">
-              <div>
-                <label className="label">Combined premium per ₹1Cr margin ≥ ₹</label>
-                <input className="input font-mono w-40" value={perCrTrigger}
-                       onChange={(e) => setPerCrTrigger(e.target.value)}/>
-              </div>
-              <div className="pt-5">
-                <div className="text-xs text-[var(--muted)]">Live ratio</div>
-                <div className={`font-mono text-xl font-bold ${triggerMet ? "text-[var(--success)]" : ""}`}>
-                  ₹{Math.round(perCrLive).toLocaleString("en-IN")}
-                  <span className="text-xs text-[var(--muted)] font-normal ml-1">/ Cr</span>
-                  {triggerMet && <Activity size={16} className="inline ml-2 animate-pulse"/>}
-                </div>
-              </div>
-              <div className="pt-5">
-                <div className="text-xs text-[var(--muted)]">Threshold</div>
-                <div className="font-mono text-xl">₹{(+perCrTrigger).toLocaleString("en-IN")}<span className="text-xs text-[var(--muted)] font-normal ml-1">/ Cr</span></div>
-              </div>
-              <div className="pt-5">
-                <div className="text-xs text-[var(--muted)]">Status</div>
-                <div>{triggerMet ? <span className="chip-green">MET</span> : <span className="chip-yellow">Waiting</span>}</div>
-              </div>
-            </div>
-            <div className="text-xs text-[var(--muted)] leading-relaxed">
-              <b>Formula:</b> (Σ leg credit × {lotSize}) ÷ margin required × ₹1Cr.
-              Strikes are still chosen by your <b>{strikeMode === "auto" ? "auto rule (Strike Selector)" : "manual selection"}</b> — this only gates the entry by yield-on-margin.
-            </div>
-          </div>
-        )}
-
-        {triggerMode === "SEPARATE" && (
-          <div className="space-y-3">
-            <div className="rounded-lg border p-3 text-xs"
-                 style={{borderColor:"color-mix(in srgb, var(--accent) 40%, transparent)",
-                         background:"color-mix(in srgb, var(--accent) 5%, transparent)"}}>
-              <div className="flex items-start gap-2">
-                <Activity size={13} className="text-[var(--accent)] mt-0.5"/>
-                <div>
-                  <b>Thresholds = each leg's Trade Price</b> in the Legs table above.
-                  Edit them there; entry fires when each leg's bid ≥ its Trade Price.
-                  No duplicate input — single source of truth.
-                </div>
-              </div>
-              <div className="mt-2 flex gap-3 flex-wrap pl-5">
-                {legs.map((l) => (
-                  <span key={l.id} className="flex items-center gap-1.5 text-xs">
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
-                          style={{background: l.type === "CE" ? "var(--danger)" : "var(--accent)"}}>{l.type}</span>
-                    <span className="font-mono">{l.strike}</span>
-                    <span className="text-[var(--muted)]">≥</span>
-                    <span className="font-mono font-semibold">₹{l.price.toFixed(2)}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-xs text-[var(--muted)]">Execution:</span>
-              <div className="flex rounded-md border overflow-hidden" style={{borderColor:"var(--border)"}}>
-                {(["linked","independent"] as const).map(m => (
-                  <button key={m} onClick={() => setLegIndependence(m)}
-                          className="px-3 py-1.5 text-xs font-semibold"
-                          style={{background: legIndependence===m ? "var(--accent)" : "transparent",
-                                  color: legIndependence===m ? "white" : "var(--muted)"}}>
-                    {m === "linked" ? "Both legs together" : "Each leg independent"}
-                  </button>
-                ))}
-              </div>
-              <span className="text-[11px] text-[var(--muted)]">
-                {legIndependence === "linked"
-                  ? "Both CE and PE must be at threshold at the same moment to fire."
-                  : "Each leg fires on its own as soon as its threshold is met — other leg can wait."}
-              </span>
-            </div>
-
-            <details className="text-[11px] text-[var(--muted)]">
-              <summary className="cursor-pointer">Examples (click to expand)</summary>
-              <ul className="mt-2 space-y-1.5 pl-4 list-disc">
-                <li>CE 3% away & premium ≥ ₹3, PE 4% away & premium ≥ ₹2 → <b>Each leg independent</b></li>
-                <li>CE & PE both 2000 pts away, CE prem ≥ ₹3, PE prem ≥ ₹4 → <b>Both together</b></li>
-                <li>CE 4% away, PE 3% away, combined ≥ ₹7 → switch to <b>Combined ∑</b> mode</li>
-              </ul>
-            </details>
-          </div>
-        )}
-
-        {triggerMode === "NONE" && (
-          <div className="text-sm text-[var(--muted)]">
-            Strategy enters immediately at current LIMIT prices (subject to pre-trade RMS + margin check).
-          </div>
-        )}
-      </section>
+      <PremiumTrigger
+        triggerMode={triggerMode}
+        onModeChange={(m) => {
+          setTriggerMode(m);
+          if ((m === "COMBINED" || m === "PER_CR") && legs.length > 2) {
+            setLegs((L) => L.slice(0, 2));
+            toast("info", "Trimmed to 2 legs",
+              `${m === "COMBINED" ? "Combined ∑" : "Per ₹1Cr"} mode uses one CE + one PE only.`);
+          }
+        }}
+        combinedTrigger={combinedTrigger} setCombinedTrigger={setCombinedTrigger}
+        combinedLive={combinedLive} legsInTrigger={legsInTrigger}
+        perCrTrigger={perCrTrigger} setPerCrTrigger={setPerCrTrigger} perCrLive={perCrLive}
+        legs={legs} legIndependence={legIndependence} setLegIndependence={setLegIndependence}
+        triggerMet={triggerMet} legCount={legs.length} lotSize={lotSize}
+        strikeMode={strikeMode} restrictByTime={restrictByTime}
+        entryFrom={entryFrom} entryTo={entryTo}
+      />
 
       {/* Exit / Kill */}
       <ExitRules
