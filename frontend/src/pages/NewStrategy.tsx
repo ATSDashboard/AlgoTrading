@@ -356,7 +356,7 @@ export default function NewStrategy() {
               </span>
             </div>
             <div className="text-xs text-[var(--muted)] leading-relaxed">
-              Sell CE + PE at <b>min {DEFAULT_DISTANCE_PCT}% OTM</b> (rounded to nearest grid, away from spot).
+              Sell CE + PE at <b>min {DEFAULT_DISTANCE_PCT}% OTM</b>, strikes <b>rounded further from spot</b> (CE↑, PE↓ on the {strikeGrid}-pt grid — never closer than the rule).
               Target <b>₹{DEFAULT_TARGET_PER_CR.toLocaleString("en-IN")} per ₹1Cr margin</b>.
               One click, no manual entry — eliminates strike/qty mistakes.
             </div>

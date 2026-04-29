@@ -177,9 +177,20 @@ export default function StrikeSelectorBuilder() {
           )}
         </div>
 
-        <div className="text-[11px] text-[var(--muted)] flex items-center gap-1.5 pt-1 border-t" style={{borderColor:"var(--border)"}}>
-          <FilterIcon size={11}/>
-          Strike selector chooses strikes by this rule. <b>Premium trigger</b> below decides when to enter.
+        <div className="text-[11px] text-[var(--muted)] space-y-1 pt-1 border-t" style={{borderColor:"var(--border)"}}>
+          <div className="flex items-center gap-1.5">
+            <FilterIcon size={11}/>
+            Strike selector chooses strikes by this rule. <b>Premium trigger</b> below decides when to enter.
+          </div>
+          <div className="flex items-start gap-1.5">
+            <span className="mt-0.5">⤴</span>
+            <span>
+              <b>Rounding rule:</b> strike always snaps to the next available grid <b>further from spot</b>.
+              CE rounds <b>up</b> (e.g. 3% = 24,535 → <span className="font-mono text-[var(--ink)]">24,600 CE</span>),
+              PE rounds <b>down</b> (e.g. 21,230 → <span className="font-mono text-[var(--ink)]">21,200 PE</span>).
+              Never closer than the rule asks for.
+            </span>
+          </div>
         </div>
       </div>
 
@@ -266,16 +277,21 @@ export default function StrikeSelectorBuilder() {
             NIFTY · 17-Apr · {mirror ? "shared rule" : "split CE/PE rules"}
           </span>
         </div>
+        <div className="text-[11px] text-[var(--muted)] mb-2">
+          Spot 24,812 · {distType === "percent" ? `${ceVal}%` : distType === "points" ? `${ceVal}pts` : `Δ${ceVal}`} away
+          {!shared && ` (CE) / ${distType === "percent" ? `${peVal}%` : distType === "points" ? `${peVal}pts` : `Δ${peVal}`} (PE)`}
+          · strikes rounded <b>away from spot</b> (CE↑, PE↓)
+        </div>
         <div className="space-y-3">
           <SidePreview side="CE" rows={[
-            {strike:"25500 CE", price:"₹24.10", oi:"1.2M", pass:true},
-            {strike:"25800 CE", price:"₹12.50", oi:"850K", pass:true},
-            {strike:"25000 CE", price:"₹58.30", oi:"2.1M", pass:false},
+            {strike:"25600 CE", price:"₹18.40", oi:"1.2M", pass:true},
+            {strike:"25700 CE", price:"₹14.10", oi:"850K", pass:true},
+            {strike:"25500 CE", price:"₹24.85", oi:"2.1M", pass:false},
           ]}/>
           <SidePreview side="PE" rows={[
-            {strike:"22000 PE", price:"₹22.85", oi:"980K", pass:true},
-            {strike:"21700 PE", price:"₹14.20", oi:"540K", pass:true},
-            {strike:"22500 PE", price:"₹50.00", oi:"1.6M", pass:false},
+            {strike:"24050 PE", price:"₹22.85", oi:"980K", pass:true},
+            {strike:"23950 PE", price:"₹17.40", oi:"540K", pass:true},
+            {strike:"24150 PE", price:"₹31.20", oi:"1.6M", pass:false},
           ]}/>
         </div>
       </div>
