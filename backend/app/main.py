@@ -12,6 +12,7 @@ from app.brokers.registry import list_brokers
 from app.config import get_settings
 
 from app.auth.routes import router as auth_router
+from app.brokers.routes import router as broker_router
 from app.data.routes import router as data_router
 from app.data.scheduler import build_scheduler
 from app.health.routes import router as health_router
@@ -72,6 +73,7 @@ app.add_middleware(
 
 app.include_router(health_router, prefix="/health", tags=["health"])
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
+app.include_router(broker_router, prefix="/broker", tags=["broker"])
 app.include_router(data_router, prefix="/data", tags=["data"])
 app.include_router(strategy_router, prefix="/strategy", tags=["strategy"])
 app.include_router(strike_selector_router, prefix="/strike-selector", tags=["strike-selector"])
