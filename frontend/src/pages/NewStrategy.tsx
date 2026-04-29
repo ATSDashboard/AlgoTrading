@@ -667,10 +667,16 @@ export default function NewStrategy() {
         </div>
       </section>
 
-      {/* Entry Trigger */}
+      {/* Premium Trigger (separate module — pairs with Strike Selector for auto trades) */}
       <section className="card space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <h2 className="font-semibold">Entry Trigger</h2>
+          <div>
+            <h2 className="font-semibold">Premium Trigger</h2>
+            <p className="text-[11px] text-[var(--muted)] mt-0.5">
+              Live entry gate — combined CE+PE or per-leg threshold.
+              {strikeMode === "auto" && <> Auto-trades fire only when <b>strike rule</b> ✓ <b>and</b> <b>premium trigger</b> ✓.</>}
+            </p>
+          </div>
           <div className="flex gap-2">
             {(["COMBINED","SEPARATE","NONE"] as const).map((m) => (
               <button key={m} type="button" onClick={() => setTriggerMode(m)}
