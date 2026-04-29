@@ -130,7 +130,9 @@ export default function NewStrategy() {
   const [strikeMode, setStrikeMode] = useState<"manual"|"auto">("manual");
 
   // Confirmation modals
-  const [confirmOpen, setConfirmOpen] = useState<null | "start" | "execute-now" | "save-draft" | "cancel">(null);
+  const [confirmOpen, setConfirmOpen] = useState<null | "start" | "execute-now" | "save-draft" | "cancel" | "load-default">(null);
+  const [pendingDefaultLots, setPendingDefaultLots] = useState<number>(1);
+  const [pendingExecuteAfterLoad, setPendingExecuteAfterLoad] = useState<boolean>(false);
 
   // Exit/RMS
   const [sl, setSl] = useState("3000");
@@ -377,6 +379,14 @@ export default function NewStrategy() {
           </div>
           <div className="flex flex-col gap-2 items-stretch min-w-[220px]">
             <div className="flex items-center gap-2">
+              <label className="text-xs text-[var(--muted)] whitespace-nowrap">Symbol</label>
+              <select className="input !py-1.5 text-sm font-mono flex-1"
+                      value={underlying} onChange={(e) => setUnderlying(e.target.value as "NIFTY" | "SENSEX")}>
+                <option value="NIFTY">NIFTY · spot 24,812 · lot 65 · grid 50</option>
+                <option value="SENSEX">SENSEX · spot 81,204 · lot 20 · grid 100</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
               <label className="text-xs text-[var(--muted)] whitespace-nowrap">Lots</label>
               <select id="default-lots" defaultValue="1"
                       className="input !py-1.5 text-sm font-mono flex-1">
@@ -386,15 +396,18 @@ export default function NewStrategy() {
             <button className="btn-primary flex items-center justify-center gap-2 py-2.5"
                     onClick={() => {
                       const sel = document.getElementById("default-lots") as HTMLSelectElement;
-                      applyDefaultStrategy(+(sel?.value ?? "1"));
+                      setPendingDefaultLots(+(sel?.value ?? "1"));
+                      setPendingExecuteAfterLoad(false);
+                      setConfirmOpen("load-default");
                     }}>
               <Rocket size={14}/> Load Default Strategy
             </button>
             <button className="btn-danger btn-sm flex items-center justify-center gap-1"
                     onClick={() => {
                       const sel = document.getElementById("default-lots") as HTMLSelectElement;
-                      applyDefaultStrategy(+(sel?.value ?? "1"));
-                      setTimeout(() => setConfirmOpen("execute-now"), 100);
+                      setPendingDefaultLots(+(sel?.value ?? "1"));
+                      setPendingExecuteAfterLoad(true);
+                      setConfirmOpen("load-default");
                     }}>
               <Zap size={14}/> Load + Execute Now
             </button>
@@ -870,10 +883,25 @@ export default function NewStrategy() {
         body={
           <div className="space-y-2">
             <p>The engine will poll live quotes every 2s and place orders when your trigger condition is met.</p>
+            <div className="rounded-md p-3 text-xs space-y-1" style={{background:"var(--panel-2)"}}>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Underlying</span><span className="font-mono">{underlying}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Broker · Demat</span><span className="font-mono">{selectedBroker.toUpperCase()} · {selectedDemats.join(", ")}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Strategy</span><span className="font-mono">{name}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Trigger</span>
+                <span className="font-mono">
+                  {triggerMode === "COMBINED" && `Combined ≥ ₹${combinedTrigger}`}
+                  {triggerMode === "SEPARATE" && `Per-leg (${legIndependence})`}
+                  {triggerMode === "NONE" && `Enter immediately`}
+                </span></div>
+            </div>
+            <div className="rounded-md p-3 text-xs font-mono space-y-1" style={{background:"var(--panel-2)"}}>
+              {legs.map(l => <div key={l.id}>{l.side === "S" ? "SELL" : "BUY"} {l.lots}× ({l.lots*lotSize}u) {l.strike}{l.type} @ ₹{l.price}</div>)}
+            </div>
             <ul className="text-xs text-[var(--muted)] list-disc pl-5">
               <li>{legs.length} legs · {totalUnits} units</li>
-              <li>Estimated credit ₹{Math.abs(Math.round(creditDebit)).toLocaleString("en-IN")}</li>
+              <li>Estimated {creditDebit >= 0 ? "credit" : "debit"}: ₹{Math.abs(Math.round(creditDebit)).toLocaleString("en-IN")}</li>
               <li>Margin required ₹1,05,000 · available ₹8,45,000</li>
+              <li>Exit: SL ₹{stopLoss} · Target ₹{target} · Square-off {squareOff} IST</li>
               {needsApproval && <li className="text-[var(--warn)]">⚠ Two-person approval will be requested ({maxLots} lots ≥ 5)</li>}
             </ul>
           </div>
@@ -891,8 +919,13 @@ export default function NewStrategy() {
         body={
           <div className="space-y-2">
             <p>This bypasses the trigger and places all leg orders <b>right now</b> at LIMIT prices. Real money.</p>
-            <div className="rounded-md p-3 text-xs font-mono" style={{background:"var(--panel-2)"}}>
-              {legs.map(l => <div key={l.id}>{l.side === "S" ? "SELL" : "BUY"} {l.lots}× {l.strike}{l.type} @ ₹{l.price}</div>)}
+            <div className="rounded-md p-3 text-xs space-y-1" style={{background:"var(--panel-2)"}}>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Underlying</span><span className="font-mono">{underlying}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Broker · Demat</span><span className="font-mono">{selectedBroker.toUpperCase()} · {selectedDemats.join(", ")}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Strategy</span><span className="font-mono">{name}</span></div>
+            </div>
+            <div className="rounded-md p-3 text-xs font-mono space-y-1" style={{background:"var(--panel-2)"}}>
+              {legs.map(l => <div key={l.id}>{l.side === "S" ? "SELL" : "BUY"} {l.lots}× ({l.lots*lotSize}u) {l.strike}{l.type} @ ₹{l.price}</div>)}
             </div>
             <ul className="text-xs text-[var(--muted)] list-disc pl-5">
               <li>Estimated {creditDebit >= 0 ? "credit" : "debit"}: ₹{Math.abs(Math.round(creditDebit)).toLocaleString("en-IN")}</li>
@@ -902,6 +935,50 @@ export default function NewStrategy() {
           </div>
         }
         onConfirm={() => { setConfirmOpen(null); toast("success", "Orders submitted", "3 orders queued · SEBI rate bucket 3/8"); nav("/strategy/42"); }}
+        onCancel={() => setConfirmOpen(null)}
+      />
+
+      <ConfirmModal
+        open={confirmOpen === "load-default"}
+        title={pendingExecuteAfterLoad ? "Default Strategy — Execute Now?" : "Load Default Strategy?"}
+        tone={pendingExecuteAfterLoad ? "danger" : "info"}
+        confirmLabel={pendingExecuteAfterLoad ? "Load + Execute" : "Load configuration"}
+        typeToConfirm={pendingExecuteAfterLoad ? "EXECUTE" : undefined}
+        body={
+          <div className="space-y-2">
+            <p>
+              {pendingExecuteAfterLoad
+                ? <>Pre-fills the legs and <b>places orders right now</b>. Real money.</>
+                : <>Pre-fills the {underlying} legs below. Review then click <b>Start (Monitor)</b> or <b>Execute Now</b> to actually trade.</>}
+            </p>
+            <div className="rounded-md p-3 text-xs space-y-1" style={{background:"var(--panel-2)"}}>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Underlying</span><span className="font-mono font-semibold">{underlying}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Broker · Demat</span><span className="font-mono">{selectedBroker.toUpperCase()} · {selectedDemats.join(", ")}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Spot</span><span className="font-mono">{spot.toLocaleString("en-IN")}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Distance</span><span className="font-mono">≥ {DEFAULT_DISTANCE_PCT}% OTM (rounded away)</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Strikes</span>
+                <span className="font-mono font-semibold">{defaultStrikesPreview.ce} CE / {defaultStrikesPreview.pe} PE</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Lots</span>
+                <span className="font-mono">{pendingDefaultLots} × {lotSize}u = <b>{pendingDefaultLots*lotSize}u per leg</b></span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Premium target</span><span className="font-mono">₹{DEFAULT_TARGET_PER_CR.toLocaleString("en-IN")}/Cr margin</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">Margin (approx)</span><span className="font-mono">~₹{(marginPerLot * pendingDefaultLots / 1000).toFixed(0)}K</span></div>
+            </div>
+            <ul className="text-xs text-[var(--muted)] list-disc pl-5">
+              <li>SELL {defaultStrikesPreview.ce} CE × {pendingDefaultLots} lot{pendingDefaultLots>1?"s":""}</li>
+              <li>SELL {defaultStrikesPreview.pe} PE × {pendingDefaultLots} lot{pendingDefaultLots>1?"s":""}</li>
+              {pendingExecuteAfterLoad && <li className="text-[var(--warn)]">⚠ Orders submit immediately after confirm</li>}
+            </ul>
+          </div>
+        }
+        onConfirm={() => {
+          applyDefaultStrategy(pendingDefaultLots);
+          setConfirmOpen(null);
+          if (pendingExecuteAfterLoad) {
+            setTimeout(() => setConfirmOpen("execute-now"), 150);
+          } else {
+            toast("success", "Default loaded", `${defaultStrikesPreview.ce} CE / ${defaultStrikesPreview.pe} PE · ${pendingDefaultLots} lot${pendingDefaultLots>1?"s":""}`);
+          }
+        }}
         onCancel={() => setConfirmOpen(null)}
       />
 
