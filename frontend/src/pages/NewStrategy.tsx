@@ -97,8 +97,9 @@ export default function NewStrategy() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   // Trigger
-  const [triggerMode, setTriggerMode] = useState<"COMBINED"|"SEPARATE"|"NONE">("COMBINED");
+  const [triggerMode, setTriggerMode] = useState<"COMBINED"|"PER_CR"|"SEPARATE"|"NONE">("COMBINED");
   const [combinedTrigger, setCombinedTrigger] = useState("80");
+  const [perCrTrigger, setPerCrTrigger] = useState("5000");  // ₹/Cr
   // SEPARATE mode: do legs execute independently (each fires on its own when met)
   // or do both legs need to be in-threshold simultaneously?
   const [legIndependence, setLegIndependence] = useState<"linked"|"independent">("linked");
@@ -301,7 +302,12 @@ export default function NewStrategy() {
   const marginExceeded = marginGap < 0;
   const marginNearLimit = !marginExceeded && marginPctUsed >= 80;
   const legsInTrigger = legs.filter((l) => l.inCombinedTrigger).length;
-  const triggerMet = triggerMode === "COMBINED" && combinedLive >= +combinedTrigger;
+  // Live combined-premium per ₹1Cr margin: (combined ₹ × lotSize × marginPerLot⁻¹ × 1Cr)
+  // Approx: combined-credit / margin-required × 1Cr  (in ₹ per Cr)
+  const perCrLive = marginRequired > 0 ? (combinedLive * lotSize * legs.reduce((s,l)=>l.inCombinedTrigger?s+l.lots:s,0)) / marginRequired * 1_00_00_000 : 0;
+  const triggerMet =
+    (triggerMode === "COMBINED" && combinedLive >= +combinedTrigger) ||
+    (triggerMode === "PER_CR"   && perCrLive   >= +perCrTrigger);
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -668,9 +674,9 @@ export default function NewStrategy() {
             </div>
           </div>
           <button onClick={addLeg}
-                  disabled={triggerMode === "COMBINED" && legs.length >= 2}
-                  title={triggerMode === "COMBINED" && legs.length >= 2
-                    ? "Combined ∑ mode is locked to 2 legs (CE + PE). Switch trigger mode to add more."
+                  disabled={(triggerMode === "COMBINED" || triggerMode === "PER_CR") && legs.length >= 2}
+                  title={(triggerMode === "COMBINED" || triggerMode === "PER_CR") && legs.length >= 2
+                    ? `${triggerMode === "COMBINED" ? "Combined ∑" : "Per ₹1Cr"} mode is locked to 2 legs (CE + PE). Switch trigger mode to add more.`
                     : undefined}
                   className="btn-primary btn-sm flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed">
             <Plus size={12}/>Add Leg
@@ -942,19 +948,19 @@ export default function NewStrategy() {
             </p>
           </div>
           <div className="inline-flex rounded-lg p-0.5 border" style={{borderColor:"var(--border)", background:"var(--panel-2)"}}>
-            {(["COMBINED","SEPARATE","NONE"] as const).map((m) => (
+            {(["COMBINED","PER_CR","SEPARATE","NONE"] as const).map((m) => (
               <button key={m} type="button" onClick={() => {
                         setTriggerMode(m);
-                        if (m === "COMBINED" && legs.length > 2) {
+                        if ((m === "COMBINED" || m === "PER_CR") && legs.length > 2) {
                           setLegs((L) => L.slice(0, 2));
-                          toast("info", "Trimmed to 2 legs", "Combined ∑ mode uses one CE + one PE only.");
+                          toast("info", "Trimmed to 2 legs", `${m === "COMBINED" ? "Combined ∑" : "Per ₹1Cr"} mode uses one CE + one PE only.`);
                         }
                       }}
                       className="px-3 py-1.5 rounded-md text-xs font-semibold transition"
                       style={triggerMode === m
                         ? {background: "var(--panel)", color: "var(--ink)", boxShadow: "0 1px 2px rgba(0,0,0,0.08)"}
                         : {background: "transparent", color: "var(--muted)"}}>
-                {m === "COMBINED" ? "Combined ∑" : m === "SEPARATE" ? "Per-leg" : "Enter now"}
+                {m === "COMBINED" ? "Combined ∑" : m === "PER_CR" ? "Per ₹1Cr" : m === "SEPARATE" ? "Per-leg" : "Enter now"}
               </button>
             ))}
           </div>
@@ -987,6 +993,38 @@ export default function NewStrategy() {
             <div className="text-xs text-[var(--muted)]">
               Formula: Σ(SELL leg bid) − Σ(BUY leg ask) for all ∑-marked legs.
               {legs.length > 2 && " Toggle the ∑ column on each leg above to pick which legs combine."}
+            </div>
+          </div>
+        )}
+
+        {triggerMode === "PER_CR" && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div>
+                <label className="label">Combined premium per ₹1Cr margin ≥ ₹</label>
+                <input className="input font-mono w-40" value={perCrTrigger}
+                       onChange={(e) => setPerCrTrigger(e.target.value)}/>
+              </div>
+              <div className="pt-5">
+                <div className="text-xs text-[var(--muted)]">Live ratio</div>
+                <div className={`font-mono text-xl font-bold ${triggerMet ? "text-[var(--success)]" : ""}`}>
+                  ₹{Math.round(perCrLive).toLocaleString("en-IN")}
+                  <span className="text-xs text-[var(--muted)] font-normal ml-1">/ Cr</span>
+                  {triggerMet && <Activity size={16} className="inline ml-2 animate-pulse"/>}
+                </div>
+              </div>
+              <div className="pt-5">
+                <div className="text-xs text-[var(--muted)]">Threshold</div>
+                <div className="font-mono text-xl">₹{(+perCrTrigger).toLocaleString("en-IN")}<span className="text-xs text-[var(--muted)] font-normal ml-1">/ Cr</span></div>
+              </div>
+              <div className="pt-5">
+                <div className="text-xs text-[var(--muted)]">Status</div>
+                <div>{triggerMet ? <span className="chip-green">MET</span> : <span className="chip-yellow">Waiting</span>}</div>
+              </div>
+            </div>
+            <div className="text-xs text-[var(--muted)] leading-relaxed">
+              <b>Formula:</b> (Σ leg credit × {lotSize}) ÷ margin required × ₹1Cr.
+              Strikes are still chosen by your <b>{strikeMode === "auto" ? "auto rule (Strike Selector)" : "manual selection"}</b> — this only gates the entry by yield-on-margin.
             </div>
           </div>
         )}
@@ -1174,7 +1212,12 @@ export default function NewStrategy() {
       <div className="sticky bottom-0 -mx-6 px-6 py-3 border-t flex gap-2 justify-between items-center"
            style={{borderColor:"var(--border)", background:"color-mix(in srgb, var(--bg) 92%, transparent)", backdropFilter:"blur(6px)"}}>
         <div className="text-xs text-[var(--muted)]">
-          {legs.length} legs · {totalUnits}u · {creditDebit >= 0 ? "Credit" : "Debit"} ₹{Math.abs(Math.round(creditDebit)).toLocaleString("en-IN")} · {triggerMode === "COMBINED" ? (triggerMet ? "Trigger MET ✓" : "Waiting for trigger") : triggerMode === "NONE" ? "No trigger — direct entry" : "Per-leg trigger"}
+          {legs.length} legs · {totalUnits}u · {creditDebit >= 0 ? "Credit" : "Debit"} ₹{Math.abs(Math.round(creditDebit)).toLocaleString("en-IN")} · {
+            triggerMode === "COMBINED" ? (triggerMet ? "Combined trigger MET ✓" : "Waiting for combined trigger")
+            : triggerMode === "PER_CR" ? (triggerMet ? "Per-Cr trigger MET ✓" : "Waiting for per-Cr trigger")
+            : triggerMode === "NONE" ? "No trigger — direct entry"
+            : "Per-leg trigger"
+          }
         </div>
         <div className="flex gap-2">
           <button className="btn-ghost btn-sm" onClick={() => setConfirmOpen("cancel")}>Cancel</button>
@@ -1219,6 +1262,7 @@ export default function NewStrategy() {
               <div className="flex justify-between"><span className="text-[var(--muted)]">Trigger</span>
                 <span className="font-mono">
                   {triggerMode === "COMBINED" && `Combined ≥ ₹${combinedTrigger}`}
+                  {triggerMode === "PER_CR"   && `≥ ₹${(+perCrTrigger).toLocaleString("en-IN")} per ₹1Cr margin`}
                   {triggerMode === "SEPARATE" && `Per-leg (${legIndependence})`}
                   {triggerMode === "NONE" && `Enter immediately`}
                 </span></div>
