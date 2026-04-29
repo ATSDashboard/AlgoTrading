@@ -47,8 +47,9 @@
   .input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
 
   .label { @apply block text-xs font-medium mb-1 uppercase tracking-wide; color: var(--muted); }
-  .card  { @apply rounded-xl p-5 border; background: var(--panel); border-color: var(--border); }
-  .card-compact { @apply rounded-lg p-3 border; background: var(--panel); border-color: var(--border); }
+  /* Polish: card padding tightened ~20% (p-5→p-4), border softened to 60% opacity. */
+  .card  { @apply rounded-xl p-4 border; background: var(--panel); border-color: color-mix(in srgb, var(--border) 70%, transparent); }
+  .card-compact { @apply rounded-lg p-3 border; background: var(--panel); border-color: color-mix(in srgb, var(--border) 70%, transparent); }
   .panel { background: var(--panel); }
 
   .chip { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border; }

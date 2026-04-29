@@ -266,7 +266,7 @@ export default function NewStrategy() {
   const triggerMet = triggerMode === "COMBINED" && combinedLive >= +combinedTrigger;
 
   return (
-    <div className="max-w-5xl space-y-5">
+    <div className="max-w-5xl space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold">Trade</h1>
@@ -381,9 +381,11 @@ export default function NewStrategy() {
             <div className="text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">
               {((freeMargin/totalMargin)*100).toFixed(0)}% free
             </div>
-            <div className="w-full h-2 rounded-full overflow-hidden" style={{background:"var(--panel-2)"}}>
-              <div className="h-full" style={{width: `${(usedByActive/totalMargin)*100}%`, background:"var(--warn)"}}/>
-              <div className="h-full -mt-2" style={{width: `${((usedByActive+blockedByOrders)/totalMargin)*100}%`, background:"color-mix(in srgb, var(--warn) 50%, transparent)"}}/>
+            <div className="w-full h-2.5 rounded-full overflow-hidden relative" style={{background:"var(--panel-2)"}}>
+              {/* Blocked (translucent, sits behind used) */}
+              <div className="absolute inset-y-0 left-0" style={{width: `${((usedByActive+blockedByOrders)/totalMargin)*100}%`, background:"color-mix(in srgb, var(--warn) 35%, transparent)"}}/>
+              {/* Used (solid, on top) */}
+              <div className="absolute inset-y-0 left-0" style={{width: `${(usedByActive/totalMargin)*100}%`, background:"var(--warn)"}}/>
             </div>
           </div>
         </div>
@@ -429,7 +431,7 @@ export default function NewStrategy() {
           </div>
 
           {/* Right — pickers + actions */}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 md:max-w-[220px] md:mx-auto md:w-full">
             <select className="input !py-2 text-sm"
                     value={underlying} onChange={(e) => setUnderlying(e.target.value as "NIFTY" | "SENSEX")}>
               <option value="NIFTY">NIFTY · lot 65</option>
@@ -800,21 +802,19 @@ export default function NewStrategy() {
               {restrictByTime && <> Active only between <b>{entryFrom}</b>–<b>{entryTo}</b> IST.</>}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="inline-flex rounded-lg p-0.5 border" style={{borderColor:"var(--border)", background:"var(--panel-2)"}}>
             {(["COMBINED","SEPARATE","NONE"] as const).map((m) => (
               <button key={m} type="button" onClick={() => {
                         setTriggerMode(m);
                         if (m === "COMBINED" && legs.length > 2) {
-                          // Combined ∑ is a 2-leg (CE + PE) construct. Trim extras.
                           setLegs((L) => L.slice(0, 2));
                           toast("info", "Trimmed to 2 legs", "Combined ∑ mode uses one CE + one PE only.");
                         }
                       }}
-                      className={`px-3 py-1.5 rounded-md text-xs font-semibold border transition ${
-                        triggerMode === m ? "text-[var(--accent)]" : "text-[var(--muted)]"
-                      }`}
-                      style={{borderColor: triggerMode===m?"var(--accent)":"var(--border)",
-                              background: triggerMode===m?"color-mix(in srgb, var(--accent) 10%, transparent)":"transparent"}}>
+                      className="px-3 py-1.5 rounded-md text-xs font-semibold transition"
+                      style={triggerMode === m
+                        ? {background: "var(--panel)", color: "var(--ink)", boxShadow: "0 1px 2px rgba(0,0,0,0.08)"}
+                        : {background: "transparent", color: "var(--muted)"}}>
                 {m === "COMBINED" ? "Combined ∑" : m === "SEPARATE" ? "Per-leg" : "Enter now"}
               </button>
             ))}

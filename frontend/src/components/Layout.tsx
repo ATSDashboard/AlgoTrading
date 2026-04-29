@@ -57,16 +57,20 @@ export default function Layout() {
 
         {/* Main */}
         <main className="flex-1 flex flex-col min-w-0">
-          <header className="h-12 border-b px-6 flex items-center justify-end gap-3 text-sm"
+          <header className="h-12 border-b px-6 flex items-center justify-end gap-2 text-xs"
                    style={{borderColor:"var(--border)", background:"var(--panel)"}}>
             {brokerSession ? (
-              <span className="chip-green">
-                <Activity size={12}/> {brokerSession.broker.toUpperCase()} · {brokerSession.demat}
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium"
+                    style={{color:"var(--success)", background:"color-mix(in srgb, var(--success) 10%, transparent)"}}>
+                <Activity size={11}/> {brokerSession.broker.toUpperCase()} · {brokerSession.demat}
               </span>
             ) : (
               <span className="chip-red">No broker session</span>
             )}
-            <span className="chip-blue">SEBI rate 0/8 · OTR 2.1</span>
+            <span className="text-[var(--muted)]">·</span>
+            <span className="text-[var(--muted)] font-mono">SEBI 0/8</span>
+            <span className="text-[var(--muted)]">·</span>
+            <span className="text-[var(--muted)] font-mono">OTR 2.1</span>
           </header>
           <div className="flex-1 overflow-auto p-6">
             <Outlet />
