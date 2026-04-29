@@ -215,21 +215,25 @@ In this order. If you read these 6 files, you understand 80% of the system.
 | `pages/Reports.tsx` | 328 lines, lots of mock data | Wire to backend in Phase 2. |
 | Empty dirs `pages/Settings/`, `pages/Admin/`, `components/ui/` | Reserved for sub-routes that never landed | **Removed** in this cleanup. |
 
-### 5.2 Backend gaps (vs current frontend contracts)
-
-The frontend has been moving faster than the backend. These endpoints are
-needed to fully wire the new Trade page features:
+### 5.2 Backend coverage (after Phase 2)
 
 | Endpoint | Why | Status |
 |---|---|---|
-| `GET /broker/{broker}/demats` | Frontend hardcodes demat lists | **Missing** |
-| `GET /broker/margin/summary` | Free margin strip + per-strategy gauge | **Missing** |
-| `POST /strategy/preview-margin` | Live margin gauge before submit | **Missing** |
-| `POST /strategy/{id}/start` | Start (Monitor) | partial |
-| `POST /strategy/{id}/execute-now` | Execute Now bypass | **Missing** |
-| `GET/PUT /admin/users/{id}/permissions` | `default_only` flag | **Missing** |
-| `POST /strike-selector/preview` | Replace mock Live Preview | exists, needs to honour primary criteria block |
+| `GET /broker/list` | Connected brokers list | ✅ stub |
+| `GET /broker/{broker}/demats` | Demats per broker | ✅ stub |
+| `GET /broker/margin/summary` | Free margin strip | ✅ stub |
+| `POST /broker/margin/allocate` | Per-demat allocation preview | ✅ stub |
+| `POST /strategy/preview-margin` | Live margin gauge before submit | ✅ stub |
+| `POST /strategy/{id}/start` | Start (Monitor) | ✅ live |
+| `POST /strategy/{id}/execute-now` | Execute Now bypass | ✅ stub |
+| `GET/PUT /admin/users/{id}/permissions` | `default_only` flag | ✅ stub |
+| `GET /admin/me/permissions` | Self-service UI gate | ✅ stub |
+| `POST /strike-selector/preview` | Live Preview against chain | partial — needs primary criteria block |
 | `WS /strategy/{id}/stream` | Live monitor updates | partial |
+
+**Stub semantics:** routes exist with the right shape and Pydantic schemas;
+mock data today; swap with broker.session calls / DB persistence when those
+land. Frontend hooks won't change — the contract is stable.
 
 ### 5.3 Code quality
 
@@ -251,35 +255,34 @@ needed to fully wire the new Trade page features:
 
 ---
 
-## 6. Refactor plan (NewStrategy.tsx)
+## 6. Refactor progress (NewStrategy.tsx)
 
-The 1443-line file should split as:
+Started at **1443 lines** (one file did everything). After Phase 1B + 2:
 
 ```
-pages/NewStrategy.tsx                   (~200 lines)
-  └── orchestrates state + renders sections in order
-
+pages/NewStrategy.tsx                   977 lines (orchestration)
 components/trade/
-  ├── BrokerDematPicker.tsx             (~250 lines)
-  │   single + multi-demat + multi-broker SOR + allocator
-  ├── DefaultStrategyCTA.tsx            (~150 lines)
-  ├── MarginStatusStrip.tsx             (~80 lines)
-  ├── EntryTimeWindow.tsx               (~80 lines)
-  ├── LegsTable.tsx                     (~250 lines)
-  │   row + expanded quote + add/remove/duplicate
-  ├── PremiumTrigger.tsx                (~150 lines)
-  │   4 modes (Combined/PerCr/PerLeg/None)
-  ├── ExitRules.tsx                     (~120 lines)
-  ├── PreviewSummary.tsx                (~80 lines)
-  └── ConfirmModals.tsx                 (~150 lines)
-      load-default + start + execute-now + save-draft + cancel
+  ├── BrokerDematPicker.tsx             277 lines  ✅
+  ├── DefaultStrategyCTA.tsx             96 lines  ✅
+  ├── EntryTimeWindow.tsx                73 lines  ✅
+  ├── ExitRules.tsx                      96 lines  ✅
+  ├── MarginStatusStrip.tsx              65 lines  ✅
+  ├── PremiumTrigger.tsx                205 lines  ✅
+  └── shared.tsx (KV2)                   14 lines  ✅
 ```
 
-State stays in the page; subcomponents take props + callbacks. No
-behavioural changes — pure split.
+Still queued (lower priority):
+- `LegsTable.tsx` (~280 lines) — biggest remaining; expanded-quote panel
+  has nested `QuoteStat` markup that's hard to extract cleanly without
+  a state-shape pass first
+- `ConfirmModals.tsx` (~200 lines) — 5 modal definitions could collapse
+  into a typed dispatcher
+- `PreviewSummary.tsx` (~50 lines) — straightforward when needed
 
-This is **Phase 1B**, queued for next session. Each component lands in
-its own commit so reviews are tight.
+State stays in the page; subcomponents take typed props + callbacks. No
+behavioural changes from refactors. Each component owns its layout
+constants (e.g. EntryTimeWindow's PRESETS list) and helpers (Field,
+ToggleRow inside ExitRules).
 
 ---
 
