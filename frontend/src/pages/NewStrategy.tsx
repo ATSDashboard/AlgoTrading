@@ -107,8 +107,28 @@ export default function NewStrategy() {
 
   // Broker + demat selection (linked to RMS access control per trader)
   const [selectedBroker, setSelectedBroker] = useState("zerodha");
+  const [selectedBrokers, setSelectedBrokers] = useState<string[]>(["zerodha"]);
   const [selectedDemats, setSelectedDemats] = useState<string[]>(["ZD12345"]);
   const [multiDematMode, setMultiDematMode] = useState(false);
+  const [multiBrokerMode, setMultiBrokerMode] = useState(false);
+
+  const ALL_BROKERS = [
+    {id: "paper",   label: "Paper Broker (mock)"},
+    {id: "axis",    label: "Axis Direct (RAPID)"},
+    {id: "zerodha", label: "Zerodha (Kite Connect)"},
+    {id: "monarch", label: "Monarch Networth"},
+    {id: "jm",      label: "JM Financial (Blink)"},
+  ];
+
+  function toggleBroker(id: string) {
+    setSelectedBrokers(prev => {
+      const next = prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id];
+      // Drop demats whose broker is no longer selected
+      const allowed = new Set(next.flatMap(b => (BROKER_DEMATS[b] ?? []).map(d => d.id)));
+      setSelectedDemats(d => d.filter(x => allowed.has(x)));
+      return next;
+    });
+  }
 
   const BROKER_DEMATS: Record<string, Array<{id: string; label: string; cap: string; assigned: boolean}>> = {
     paper:    [{id:"PAPER-001", label:"Paper Account", cap:"Unlimited", assigned: true}],
@@ -125,6 +145,14 @@ export default function NewStrategy() {
       prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]
     );
   }
+
+  // ── Margin allocation controller ────────────────────────────────────
+  // Total budget (₹) to deploy across selected demats, plus per-demat cushion.
+  // Cushion = max(cushionPct% of demat balance, cushionMin ₹) kept untouched.
+  const [budgetCr,    setBudgetCr]    = useState<number>(0);     // 0 = no cap (use free margin)
+  const [cushionPct,  setCushionPct]  = useState<number>(5);     // 5% of each demat
+  const [cushionMin,  setCushionMin]  = useState<number>(500000);// ₹5L floor per demat
+  const [splitMode,   setSplitMode]   = useState<"weighted"|"equal"|"manual">("weighted");
 
   // Strike selection mode
   const [strikeMode, setStrikeMode] = useState<"manual"|"auto">("manual");
@@ -262,6 +290,17 @@ export default function NewStrategy() {
 
   const maxLots = Math.max(...legs.map((l) => l.lots), 0);
   const needsApproval = maxLots >= 5;
+
+  // Margin required for THIS strategy = sum of (margin per lot) per leg
+  // (selling options has standardised SPAN+ELM margin per lot, simplified here)
+  const marginRequired = useMemo(() => {
+    return legs.reduce((acc, l) => acc + (marginPerLot * l.lots), 0);
+  }, [legs, marginPerLot]);
+
+  const marginGap = freeMargin - marginRequired;       // negative = over budget
+  const marginPctUsed = freeMargin > 0 ? Math.min(100, (marginRequired / freeMargin) * 100) : 100;
+  const marginExceeded = marginGap < 0;
+  const marginNearLimit = !marginExceeded && marginPctUsed >= 80;
   const legsInTrigger = legs.filter((l) => l.inCombinedTrigger).length;
   const triggerMet = triggerMode === "COMBINED" && combinedLive >= +combinedTrigger;
 
@@ -292,66 +331,228 @@ export default function NewStrategy() {
             <h2 className="font-semibold">Broker & Demat</h2>
             <span className="text-[10px] text-[var(--muted)]">applies to every order on this page</span>
           </div>
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
-            <input type="checkbox" checked={multiDematMode}
-                   onChange={(e) => setMultiDematMode(e.target.checked)}/>
-            Multi-demat (SOR across accounts)
-          </label>
-        </div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <label className="label">Broker</label>
-            <select className="input" value={selectedBroker}
-                    onChange={(e) => {
-                      setSelectedBroker(e.target.value);
-                      const first = BROKER_DEMATS[e.target.value]?.find(d => d.assigned);
-                      setSelectedDemats(first ? [first.id] : []);
-                    }}>
-              <option value="paper">Paper Broker (mock)</option>
-              <option value="axis">Axis Direct (RAPID)</option>
-              <option value="zerodha">Zerodha (Kite Connect)</option>
-              <option value="monarch">Monarch Networth</option>
-              <option value="jm">JM Financial (Blink)</option>
-            </select>
+          <div className="flex items-center gap-3 text-xs">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={multiBrokerMode}
+                     onChange={(e) => {
+                       setMultiBrokerMode(e.target.checked);
+                       if (e.target.checked) setMultiDematMode(true);
+                     }}/>
+              Multi-broker SOR
+            </label>
+            <label className={`flex items-center gap-2 ${multiBrokerMode ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}>
+              <input type="checkbox" checked={multiDematMode || multiBrokerMode}
+                     disabled={multiBrokerMode}
+                     onChange={(e) => setMultiDematMode(e.target.checked)}/>
+              Multi-demat
+            </label>
           </div>
-          <div>
-            <label className="label">Demat Account{multiDematMode ? "s (select multiple)" : ""}</label>
-            {multiDematMode ? (
-              <div className="space-y-2">
-                {(BROKER_DEMATS[selectedBroker] ?? []).map(d => (
-                  <label key={d.id}
-                         className="flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition"
-                         style={{borderColor: selectedDemats.includes(d.id) ? "var(--accent)" : "var(--border)",
-                                 background: selectedDemats.includes(d.id) ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
-                                 opacity: d.assigned ? 1 : 0.4, cursor: d.assigned ? "pointer" : "not-allowed"}}>
-                    <input type="checkbox" checked={selectedDemats.includes(d.id)}
-                           disabled={!d.assigned}
-                           onChange={() => d.assigned && toggleDemat(d.id)}/>
+        </div>
+
+        {multiBrokerMode ? (
+          /* MULTI-BROKER + MULTI-DEMAT: pick brokers, then demats within each */
+          <div className="space-y-2">
+            {ALL_BROKERS.map(b => {
+              const demats = BROKER_DEMATS[b.id] ?? [];
+              const broker_selected = selectedBrokers.includes(b.id);
+              return (
+                <div key={b.id} className="rounded-lg border p-3"
+                     style={{borderColor: broker_selected ? "var(--accent)" : "var(--border)",
+                             background: broker_selected ? "color-mix(in srgb, var(--accent) 5%, transparent)" : "transparent"}}>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" checked={broker_selected}
+                           onChange={() => toggleBroker(b.id)}/>
                     <div className="flex-1">
-                      <div className="text-sm font-mono">{d.id}</div>
-                      <div className="text-xs text-[var(--muted)]">{d.label}</div>
+                      <div className="text-sm font-semibold">{b.label}</div>
+                      <div className="text-[10px] text-[var(--muted)]">{demats.filter(d => d.assigned).length} demat{demats.filter(d => d.assigned).length !== 1 ? "s" : ""} available</div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-xs text-[var(--muted)]">Daily cap</div>
-                      <div className="text-xs font-mono">{d.cap}</div>
-                    </div>
-                    {!d.assigned && <span className="chip-red">Not assigned</span>}
                   </label>
-                ))}
-                <div className="text-[10px] text-[var(--muted)]">
-                  Orders will be split across selected demats by free margin (Smart Order Routing). Admin assigns demat access in Settings → Users.
+                  {broker_selected && (
+                    <div className="grid sm:grid-cols-2 gap-1.5 mt-2 pl-6">
+                      {demats.map(d => (
+                        <label key={d.id}
+                               className="flex items-center gap-2 px-2 py-1.5 rounded-md border text-xs"
+                               style={{borderColor: selectedDemats.includes(d.id) ? "var(--accent)" : "var(--border)",
+                                       background: selectedDemats.includes(d.id) ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
+                                       opacity: d.assigned ? 1 : 0.4, cursor: d.assigned ? "pointer" : "not-allowed"}}>
+                          <input type="checkbox" checked={selectedDemats.includes(d.id)}
+                                 disabled={!d.assigned}
+                                 onChange={() => d.assigned && toggleDemat(d.id)}/>
+                          <span className="font-mono flex-1">{d.id}</span>
+                          <span className="text-[var(--muted)] text-[10px]">cap {d.cap}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <div className="text-[10px] text-[var(--muted)] pt-1">
+              SOR fans orders across <b>selected broker × demat combos</b> by free margin and session health.
+            </div>
+          </div>
+        ) : (
+          /* SINGLE BROKER (with optional multi-demat) */
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Broker</label>
+              <select className="input" value={selectedBroker}
+                      onChange={(e) => {
+                        setSelectedBroker(e.target.value);
+                        const first = BROKER_DEMATS[e.target.value]?.find(d => d.assigned);
+                        setSelectedDemats(first ? [first.id] : []);
+                      }}>
+                {ALL_BROKERS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Demat Account{multiDematMode ? "s (select multiple)" : ""}</label>
+              {multiDematMode ? (
+                <div className="space-y-2">
+                  {(BROKER_DEMATS[selectedBroker] ?? []).map(d => (
+                    <label key={d.id}
+                           className="flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition"
+                           style={{borderColor: selectedDemats.includes(d.id) ? "var(--accent)" : "var(--border)",
+                                   background: selectedDemats.includes(d.id) ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
+                                   opacity: d.assigned ? 1 : 0.4, cursor: d.assigned ? "pointer" : "not-allowed"}}>
+                      <input type="checkbox" checked={selectedDemats.includes(d.id)}
+                             disabled={!d.assigned}
+                             onChange={() => d.assigned && toggleDemat(d.id)}/>
+                      <div className="flex-1">
+                        <div className="text-sm font-mono">{d.id}</div>
+                        <div className="text-xs text-[var(--muted)]">{d.label}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-[var(--muted)]">Daily cap</div>
+                        <div className="text-xs font-mono">{d.cap}</div>
+                      </div>
+                      {!d.assigned && <span className="chip-red">Not assigned</span>}
+                    </label>
+                  ))}
+                  <div className="text-[10px] text-[var(--muted)]">
+                    Orders split across selected demats by free margin (Smart Order Routing).
+                  </div>
+                </div>
+              ) : (
+                <select className="input" value={selectedDemats[0] ?? ""}
+                        onChange={(e) => setSelectedDemats([e.target.value])}>
+                  {(BROKER_DEMATS[selectedBroker] ?? []).filter(d => d.assigned).map(d => (
+                    <option key={d.id} value={d.id}>{d.id} — {d.label} (cap {d.cap})</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+        )}
+        {/* ── Margin Allocation (only when multi-demat or multi-broker is on) ─ */}
+        {(multiDematMode || multiBrokerMode) && selectedDemats.length > 0 && (
+          <details className="pt-2 border-t" style={{borderColor:"var(--border)"}} open>
+            <summary className="cursor-pointer text-sm font-medium flex items-center gap-2">
+              <Shield size={13} className="text-[var(--accent)]"/>
+              Margin allocation
+              <span className="text-[10px] text-[var(--muted)] font-normal">
+                · how much capital to deploy and reserve per demat
+              </span>
+            </summary>
+            <div className="mt-3 space-y-3">
+              <div className="grid md:grid-cols-3 gap-3">
+                <div>
+                  <label className="label">Total budget</label>
+                  <div className="flex items-center gap-2">
+                    <input type="number" step="0.5" min="0" className="input font-mono"
+                           value={budgetCr} onChange={(e) => setBudgetCr(+e.target.value)}/>
+                    <span className="text-sm text-[var(--muted)]">Cr</span>
+                  </div>
+                  <div className="text-[10px] text-[var(--muted)] mt-0.5">
+                    {budgetCr === 0 ? "0 = use full free margin (no cap)" : `₹${(budgetCr).toFixed(2)}Cr cap across all selected demats`}
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Cushion per demat (%)</label>
+                  <div className="flex items-center gap-2">
+                    <input type="number" step="0.5" min="0" max="50" className="input font-mono"
+                           value={cushionPct} onChange={(e) => setCushionPct(+e.target.value)}/>
+                    <span className="text-sm text-[var(--muted)]">%</span>
+                  </div>
+                  <div className="text-[10px] text-[var(--muted)] mt-0.5">Always free for slippage / SPAN spikes</div>
+                </div>
+                <div>
+                  <label className="label">Cushion floor (₹)</label>
+                  <div className="flex items-center gap-2">
+                    <input type="number" step="100000" min="0" className="input font-mono"
+                           value={cushionMin} onChange={(e) => setCushionMin(+e.target.value)}/>
+                  </div>
+                  <div className="text-[10px] text-[var(--muted)] mt-0.5">
+                    Max(% , floor) per demat — currently ₹{(cushionMin/100000).toFixed(1)}L
+                  </div>
                 </div>
               </div>
-            ) : (
-              <select className="input" value={selectedDemats[0] ?? ""}
-                      onChange={(e) => setSelectedDemats([e.target.value])}>
-                {(BROKER_DEMATS[selectedBroker] ?? []).filter(d => d.assigned).map(d => (
-                  <option key={d.id} value={d.id}>{d.id} — {d.label} (cap {d.cap})</option>
-                ))}
-              </select>
-            )}
-          </div>
-        </div>
+
+              <div>
+                <label className="label">Split mode</label>
+                <div className="inline-flex rounded-lg p-0.5 border" style={{borderColor:"var(--border)", background:"var(--panel-2)"}}>
+                  {([
+                    {k:"weighted", label:"Weighted (by free margin)"},
+                    {k:"equal",    label:"Equal split"},
+                    {k:"manual",   label:"Manual per demat"},
+                  ] as const).map(o => (
+                    <button key={o.k} type="button" onClick={() => setSplitMode(o.k)}
+                            className="px-3 py-1.5 rounded-md text-xs font-semibold transition"
+                            style={splitMode === o.k
+                              ? {background:"var(--panel)", color:"var(--ink)", boxShadow:"0 1px 2px rgba(0,0,0,0.08)"}
+                              : {background:"transparent", color:"var(--muted)"}}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Per-demat preview table */}
+              <div className="rounded-lg border overflow-hidden" style={{borderColor:"var(--border)"}}>
+                <div className="grid grid-cols-[1fr_90px_90px_90px_90px] text-[10px] uppercase tracking-wide text-[var(--muted)] px-3 py-2"
+                     style={{background:"var(--panel-2)"}}>
+                  <span>Demat</span><span className="text-right">Balance</span>
+                  <span className="text-right">Cushion</span><span className="text-right">Deployable</span><span className="text-right">Allocated</span>
+                </div>
+                {selectedDemats.map((id, i) => {
+                  // Mocked balances — backend will provide live values via /broker/{id}/margin
+                  const balance = [1500000, 800000, 2200000, 1100000, 600000][i % 5] ?? 1000000;
+                  const cushion = Math.max(balance * (cushionPct/100), cushionMin);
+                  const deployable = Math.max(0, balance - cushion);
+                  // Mock allocator: weighted = pro-rata to deployable; equal = even share; manual placeholder
+                  const totalDeployable = selectedDemats.reduce((s, _, j) => {
+                    const b = [1500000, 800000, 2200000, 1100000, 600000][j % 5] ?? 1000000;
+                    return s + Math.max(0, b - Math.max(b * (cushionPct/100), cushionMin));
+                  }, 0);
+                  const cap = budgetCr > 0 ? Math.min(budgetCr * 1_00_00_000, totalDeployable) : totalDeployable;
+                  let allocated = 0;
+                  if (splitMode === "equal") allocated = cap / selectedDemats.length;
+                  else if (splitMode === "weighted") allocated = totalDeployable > 0 ? cap * (deployable / totalDeployable) : 0;
+                  else allocated = deployable; // manual placeholder — would be editable per row
+                  allocated = Math.min(allocated, deployable);
+                  return (
+                    <div key={id} className="grid grid-cols-[1fr_90px_90px_90px_90px] px-3 py-2 text-xs border-t"
+                         style={{borderColor:"var(--border)"}}>
+                      <span className="font-mono">{id}</span>
+                      <span className="text-right font-mono">₹{(balance/100000).toFixed(2)}L</span>
+                      <span className="text-right font-mono text-[var(--muted)]">₹{(cushion/100000).toFixed(2)}L</span>
+                      <span className="text-right font-mono">₹{(deployable/100000).toFixed(2)}L</span>
+                      <span className="text-right font-mono font-semibold text-[var(--success)]">₹{(allocated/100000).toFixed(2)}L</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="text-[11px] text-[var(--muted)] leading-relaxed">
+                <b>How it works:</b> Each demat keeps <b>max({cushionPct}%, ₹{(cushionMin/100000).toFixed(1)}L)</b> as cushion.
+                The remaining is the <i>deployable</i> amount.
+                {budgetCr > 0 && <> Total budget ₹{budgetCr}Cr is split using <b>{splitMode}</b> mode (capped by deployable per demat).</>}
+                {" "}SOR fans live orders within these caps.
+              </div>
+            </div>
+          </details>
+        )}
+
         <div className="text-[10px] text-[var(--muted)] flex items-center gap-1.5 pt-1 border-t" style={{borderColor:"var(--border)"}}>
           <AlertCircle size={11}/>
           This selection routes <b>every order</b> placed from this page — Default Strategy, manual legs, Execute Now, and trigger-based starts.
@@ -979,6 +1180,58 @@ export default function NewStrategy() {
       </>}
       {/* ── End manual builder ─────────────────────────────────────── */}
 
+      {/* Live margin gauge — appears just above the action bar */}
+      {!defaultOnly && (
+        <section className={`card !py-3 ${marginExceeded ? "!border-[var(--danger)]" : marginNearLimit ? "!border-[var(--warn)]" : ""}`}>
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex-1 min-w-[200px]">
+              <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">This strategy will use</div>
+              <div className={`text-xl font-mono font-bold ${
+                marginExceeded ? "text-[var(--danger)]" : marginNearLimit ? "text-[var(--warn)]" : "text-[var(--ink)]"
+              }`}>
+                ₹{(marginRequired/100000).toFixed(2)}L
+                <span className="text-xs text-[var(--muted)] font-normal ml-2">
+                  of ₹{(freeMargin/100000).toFixed(2)}L free
+                </span>
+              </div>
+            </div>
+            <div className="flex-1 min-w-[180px]">
+              <div className="w-full h-2.5 rounded-full overflow-hidden" style={{background:"var(--panel-2)"}}>
+                <div className="h-full transition-all" style={{
+                  width: `${marginPctUsed}%`,
+                  background: marginExceeded ? "var(--danger)" : marginNearLimit ? "var(--warn)" : "var(--success)"
+                }}/>
+              </div>
+              <div className="flex justify-between text-[10px] mt-1">
+                <span className={marginExceeded ? "text-[var(--danger)] font-semibold" : "text-[var(--muted)]"}>
+                  {marginPctUsed.toFixed(0)}% of free margin
+                </span>
+                <span className={`font-mono ${marginExceeded ? "text-[var(--danger)] font-semibold" : marginGap < 100000 ? "text-[var(--warn)]" : "text-[var(--success)]"}`}>
+                  {marginExceeded
+                    ? `OVER by ₹${(Math.abs(marginGap)/100000).toFixed(2)}L`
+                    : `₹${(marginGap/100000).toFixed(2)}L will remain`}
+                </span>
+              </div>
+            </div>
+          </div>
+          {marginExceeded && (
+            <div className="mt-2 pt-2 border-t flex items-start gap-2 text-xs" style={{borderColor:"var(--border)"}}>
+              <AlertCircle size={14} className="text-[var(--danger)] shrink-0 mt-0.5"/>
+              <div>
+                <b className="text-[var(--danger)]">Margin exceeded.</b> Reduce lots, change strikes, or wait for active strategies to close.
+                Pre-trade RMS will reject this order. Submit buttons are disabled.
+              </div>
+            </div>
+          )}
+          {marginNearLimit && !marginExceeded && (
+            <div className="mt-2 pt-2 border-t text-[11px]" style={{borderColor:"var(--border)"}}>
+              <span className="text-[var(--warn)]">⚠ Using {marginPctUsed.toFixed(0)}% of free margin.</span>
+              <span className="text-[var(--muted)]"> Little room for slippage / margin spikes.</span>
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Sticky action bar */}
       <div className="sticky bottom-0 -mx-6 px-6 py-3 border-t flex gap-2 justify-between items-center"
            style={{borderColor:"var(--border)", background:"color-mix(in srgb, var(--bg) 92%, transparent)", backdropFilter:"blur(6px)"}}>
@@ -993,12 +1246,16 @@ export default function NewStrategy() {
                 <Save size={14}/>Save Draft
               </button>
               {triggerMode === "NONE" ? (
-                <button className="btn-danger btn-sm flex items-center gap-1"
+                <button className="btn-danger btn-sm flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={marginExceeded}
+                        title={marginExceeded ? `Required ₹${(marginRequired/100000).toFixed(2)}L exceeds free margin ₹${(freeMargin/100000).toFixed(2)}L` : undefined}
                         onClick={() => setConfirmOpen("execute-now")}>
                   <Zap size={14}/>Execute Now
                 </button>
               ) : (
-                <button className="btn-primary btn-sm flex items-center gap-1"
+                <button className="btn-primary btn-sm flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={marginExceeded}
+                        title={marginExceeded ? `Required ₹${(marginRequired/100000).toFixed(2)}L exceeds free margin ₹${(freeMargin/100000).toFixed(2)}L` : undefined}
                         onClick={() => setConfirmOpen("start")}>
                   <Sparkles size={14}/>Start (Monitor)
                 </button>
