@@ -130,6 +130,64 @@ async def start_strategy(db: AsyncSession, user: User, strategy_id: int) -> Stra
     return s
 
 
+async def execute_now(db: AsyncSession, user: User, strategy_id: int) -> Strategy:
+    """
+    Execute Now: bypass the entry trigger and submit all leg orders immediately
+    at LIMIT. Same RMS / two-person / iceberg gates as the trigger-driven path.
+    State transitions through MONITORING -> LIVE in one shot.
+
+    Phase 2 stub: marks state and returns. Wire to OrderManager.submit_legs()
+    once the Execute Now flow is end-to-end with the broker adapters.
+    """
+    s = await _load(db, user, strategy_id)
+
+    if (s.quantity_lots >= _settings.two_person_approval_min_lots
+            and s.approved_by is None):
+        raise TwoPersonApprovalRequired(
+            f"strategy with {s.quantity_lots} lots requires 2nd admin approval"
+        )
+
+    # Allow execute-now from DRAFT or MONITORING
+    if s.state not in (StrategyState.DRAFT.value, StrategyState.MONITORING.value):
+        raise InvalidStateTransition(
+            f"cannot execute-now from state {s.state}"
+        )
+
+    transition(StrategyState(s.state), StrategyState.LIVE)
+    s.state = StrategyState.LIVE.value
+    s.started_at = s.started_at or datetime.now(UTC)
+    await db.commit()
+    return s
+
+
+async def preview_margin(db: AsyncSession, user: User, data: StrategyCreate) -> dict:
+    """
+    Cheap, idempotent margin estimate for the Trade page's live gauge.
+    Today returns a heuristic based on lot size + leg count; replace with
+    SPAN+ELM live calc once the broker margin endpoint is wired.
+    """
+    # Heuristic: ₹105K per lot for NIFTY, ₹145K for SENSEX (matches frontend)
+    margin_per_lot = 145_000 if data.underlying == "SENSEX" else 105_000
+    required = sum(margin_per_lot * leg.lots for leg in data.legs)
+
+    # Mock free margin for now — backend broker.margin will replace
+    free = 6_30_000
+
+    max_lots = max((leg.lots for leg in data.legs), default=0)
+    needs_iceberg = any(
+        leg.lots * (1000 if data.underlying == "SENSEX" else 1800) > 0
+        for leg in data.legs
+    )
+    return {
+        "required": required,
+        "free": free,
+        "exceeds": required > free,
+        "approval_required": max_lots >= _settings.two_person_approval_min_lots,
+        "needs_iceberg": needs_iceberg,
+        "slices": len(data.legs),  # one slice per leg as a placeholder
+    }
+
+
 async def exit_strategy(db: AsyncSession, user: User, strategy_id: int,
                         reason: str = "MANUAL_EXIT") -> Strategy:
     s = await _load(db, user, strategy_id)

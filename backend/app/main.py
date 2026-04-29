@@ -19,7 +19,7 @@ from app.health.routes import router as health_router
 from app.strategy.routes import router as strategy_router
 from app.strike_selector.routes import router as strike_selector_router
 from app.analytics.routes import router as analytics_router
-# from app.admin.routes import router as admin_router
+from app.admin.routes import router as admin_router
 
 settings = get_settings()
 
@@ -78,8 +78,7 @@ app.include_router(data_router, prefix="/data", tags=["data"])
 app.include_router(strategy_router, prefix="/strategy", tags=["strategy"])
 app.include_router(strike_selector_router, prefix="/strike-selector", tags=["strike-selector"])
 app.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
-# Subsequent milestones:
-# app.include_router(admin_router, prefix="/admin", tags=["admin"])
+app.include_router(admin_router, prefix="/admin", tags=["admin"])
 
 
 @app.get("/")

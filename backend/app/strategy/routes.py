@@ -60,6 +60,46 @@ async def start(strategy_id: int,
     return StrategyOut.model_validate(s)
 
 
+@router.post("/{strategy_id}/execute-now", response_model=StrategyOut)
+async def execute_now(strategy_id: int,
+                       user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_db)) -> StrategyOut:
+    """
+    Bypass the entry trigger and place all leg orders immediately at LIMIT.
+    Pre-trade RMS still runs; SEBI rate limit + iceberg slicer apply.
+    Used by the Trade page's "Execute Now" red CTA.
+    """
+    try:
+        s = await service.execute_now(db, user, strategy_id)
+    except TwoPersonApprovalRequired as e:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(e)) from e
+    except InvalidStateTransition as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from e
+    except RiskViolation as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+    return StrategyOut.model_validate(s)
+
+
+@router.post("/preview-margin")
+async def preview_margin(body: StrategyCreate,
+                          user: User = Depends(get_current_user),
+                          db: AsyncSession = Depends(get_db)) -> dict:
+    """
+    Cheap, idempotent margin estimate for a candidate strategy spec.
+    Mirrors the live margin gauge above the Trade page's action bar.
+    Does NOT create or persist anything. Returns:
+        {
+          "required":     int,   # ₹
+          "free":         int,   # ₹  (current free margin)
+          "exceeds":      bool,
+          "approval_required": bool,  # true when any leg lots >= 5
+          "needs_iceberg": bool,
+          "slices":       int,
+        }
+    """
+    return await service.preview_margin(db, user, body)
+
+
 @router.post("/{strategy_id}/exit", response_model=StrategyOut)
 async def exit_(strategy_id: int,
                  user: User = Depends(get_current_user),
