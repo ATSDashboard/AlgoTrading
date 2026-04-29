@@ -134,6 +134,22 @@ export default function NewStrategy() {
   const [pendingDefaultLots, setPendingDefaultLots] = useState<number>(1);
   const [pendingExecuteAfterLoad, setPendingExecuteAfterLoad] = useState<boolean>(false);
 
+  // ── Entry time window ────────────────────────────────────────────
+  const [entryFrom, setEntryFrom] = useState("09:30");
+  const [entryTo, setEntryTo] = useState("10:30");
+  const [restrictByTime, setRestrictByTime] = useState(true);
+
+  // ── "Default-only" trader mode (set by admin in Settings → Users) ─
+  // Reads localStorage flag for now; backend integration later.
+  const defaultOnly = typeof window !== "undefined" &&
+    localStorage.getItem("tg-default-only") === "1";
+
+  // ── Margin snapshot (mock — backend will provide live values) ─────
+  const totalMargin    = 10_00_000;       // ₹10L gross account margin
+  const usedByActive   = 3_25_000;        // tied up by other active strategies
+  const blockedByOrders =   45_000;       // pending orders / awaiting fills
+  const freeMargin     = totalMargin - usedByActive - blockedByOrders;
+
   // Exit/RMS
   const [sl, setSl] = useState("3000");
   const [target, setTarget] = useState("2000");
@@ -343,6 +359,58 @@ export default function NewStrategy() {
         </div>
       </section>
 
+      {/* ── Margin Status — only the FREE margin is usable for new trades ──── */}
+      <section className="card !py-3">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex-1 min-w-[200px]">
+            <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">Free margin (usable for new strategy)</div>
+            <div className="text-2xl font-mono font-bold text-[var(--success)]">
+              ₹{(freeMargin/100000).toFixed(2)}<span className="text-sm text-[var(--muted)] ml-1">L</span>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-4 text-xs">
+            <div>
+              <div className="text-[var(--muted)]">Total margin</div>
+              <div className="font-mono">₹{(totalMargin/100000).toFixed(2)}L</div>
+            </div>
+            <div>
+              <div className="text-[var(--muted)]">Used (active)</div>
+              <div className="font-mono text-[var(--warn)]">−₹{(usedByActive/100000).toFixed(2)}L</div>
+            </div>
+            <div>
+              <div className="text-[var(--muted)]">Blocked (pending)</div>
+              <div className="font-mono text-[var(--warn)]">−₹{(blockedByOrders/100000).toFixed(2)}L</div>
+            </div>
+            <div className="border-l pl-4" style={{borderColor:"var(--border)"}}>
+              <div className="text-[var(--muted)]">Margin bar</div>
+              <div className="w-44 h-2 rounded-full mt-1" style={{background:"var(--panel-2)"}}>
+                <div className="h-full rounded-full" style={{
+                  width: `${(usedByActive/totalMargin)*100}%`,
+                  background:"var(--warn)"
+                }}/>
+              </div>
+              <div className="text-[10px] text-[var(--muted)] mt-0.5">
+                {((freeMargin/totalMargin)*100).toFixed(0)}% free
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="text-[10px] text-[var(--muted)] mt-2 pt-2 border-t" style={{borderColor:"var(--border)"}}>
+          New strategies are sized only against <b>free margin</b>. Pre-trade RMS rejects orders that exceed it.
+        </div>
+      </section>
+
+      {defaultOnly && (
+        <div className="card border-2 !py-2.5"
+             style={{borderColor:"var(--warn)", background:"color-mix(in srgb, var(--warn) 8%, var(--panel))"}}>
+          <div className="flex items-center gap-2 text-xs">
+            <Shield size={14} className="text-[var(--warn)]"/>
+            <span><b>Restricted mode:</b> your account has access to <b>Default Strategy only</b>.
+              Manual leg builder, custom triggers, and rule editor are disabled. Contact admin for elevated access.</span>
+          </div>
+        </div>
+      )}
+
       {/* ── Default Strategy CTA — one-click safe entry ────────────────── */}
       <section className="card border-2"
                style={{borderColor:"color-mix(in srgb, var(--accent) 50%, transparent)",
@@ -418,6 +486,8 @@ export default function NewStrategy() {
         </div>
       </section>
 
+      {/* ── Manual builder (hidden in default-only mode) ──────────── */}
+      {defaultOnly ? null : <>
       {/* Strategy basics */}
       <section className="card space-y-4">
         <div className="grid md:grid-cols-3 gap-4">
@@ -482,7 +552,14 @@ export default function NewStrategy() {
               Click row to expand bid/ask/qty · ☑ column = include in combined trigger
             </div>
           </div>
-          <button onClick={addLeg} className="btn-primary btn-sm flex items-center gap-1"><Plus size={12}/>Add Leg</button>
+          <button onClick={addLeg}
+                  disabled={triggerMode === "COMBINED" && legs.length >= 2}
+                  title={triggerMode === "COMBINED" && legs.length >= 2
+                    ? "Combined ∑ mode is locked to 2 legs (CE + PE). Switch trigger mode to add more."
+                    : undefined}
+                  className="btn-primary btn-sm flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed">
+            <Plus size={12}/>Add Leg
+          </button>
         </div>
 
         {/* Column headers */}
@@ -573,11 +650,14 @@ export default function NewStrategy() {
                   {l.ltp.toFixed(2)}
                 </div>
 
-                {/* Target price (for LIMIT) */}
+                {/* Target price (for LIMIT) — read-only when Combined ∑ trigger is active */}
                 <input type="number" step="0.05" value={l.price}
-                       disabled={l.orderKind === "MARKET"}
+                       disabled={l.orderKind === "MARKET" || triggerMode === "COMBINED"}
+                       title={triggerMode === "COMBINED"
+                          ? "Disabled in Combined ∑ mode — fires when CE+PE sum hits the combined threshold below."
+                          : undefined}
                        onChange={(e) => update(l.id, {price: +e.target.value})}
-                       className="input !py-1.5 text-sm font-mono disabled:opacity-50"/>
+                       className="input !py-1.5 text-sm font-mono disabled:opacity-40 disabled:cursor-not-allowed"/>
 
                 <div className="flex gap-0.5 justify-end items-center">
                   <button type="button" title={expanded ? "Hide details" : "Show quote details"}
@@ -685,6 +765,56 @@ export default function NewStrategy() {
         </div>
       </section>
 
+      {/* Entry Time Window — gates entries to a chosen intraday window */}
+      <section className="card space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="font-semibold">Entry Time Window</h2>
+            <p className="text-[11px] text-[var(--muted)] mt-0.5">
+              Restricts entries to this intraday window (IST). Outside the window, the strategy waits or skips.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input type="checkbox" checked={restrictByTime}
+                   onChange={(e) => setRestrictByTime(e.target.checked)}/>
+            Restrict by time
+          </label>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div>
+            <label className="label">Entry from</label>
+            <input type="time" className="input !py-1.5 font-mono w-32"
+                   value={entryFrom} disabled={!restrictByTime}
+                   onChange={(e) => setEntryFrom(e.target.value)}/>
+          </div>
+          <div>
+            <label className="label">Entry to</label>
+            <input type="time" className="input !py-1.5 font-mono w-32"
+                   value={entryTo} disabled={!restrictByTime}
+                   onChange={(e) => setEntryTo(e.target.value)}/>
+          </div>
+          <div className="flex gap-1 flex-wrap pt-5">
+            {[
+              {label:"Open", from:"09:15", to:"09:30"},
+              {label:"Morn", from:"09:30", to:"10:30"},
+              {label:"Mid",  from:"11:00", to:"13:00"},
+              {label:"Aft",  from:"13:30", to:"14:30"},
+              {label:"All",  from:"09:15", to:"15:15"},
+            ].map(p => (
+              <button key={p.label} type="button"
+                      disabled={!restrictByTime}
+                      onClick={() => { setEntryFrom(p.from); setEntryTo(p.to); }}
+                      className="btn-ghost btn-sm !text-[10px] disabled:opacity-30">
+                {p.label} {p.from}–{p.to}
+              </button>
+            ))}
+          </div>
+        </div>
+        {!restrictByTime && (
+          <div className="text-[11px] text-[var(--muted)]">No time restriction — entries can fire anytime trigger conditions are met.</div>
+        )}
+      </section>
+
       {/* Premium Trigger (separate module — pairs with Strike Selector for auto trades) */}
       <section className="card space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -693,11 +823,19 @@ export default function NewStrategy() {
             <p className="text-[11px] text-[var(--muted)] mt-0.5">
               Live entry gate — combined CE+PE or per-leg threshold.
               {strikeMode === "auto" && <> Auto-trades fire only when <b>strike rule</b> ✓ <b>and</b> <b>premium trigger</b> ✓.</>}
+              {restrictByTime && <> Active only between <b>{entryFrom}</b>–<b>{entryTo}</b> IST.</>}
             </p>
           </div>
           <div className="flex gap-2">
             {(["COMBINED","SEPARATE","NONE"] as const).map((m) => (
-              <button key={m} type="button" onClick={() => setTriggerMode(m)}
+              <button key={m} type="button" onClick={() => {
+                        setTriggerMode(m);
+                        if (m === "COMBINED" && legs.length > 2) {
+                          // Combined ∑ is a 2-leg (CE + PE) construct. Trim extras.
+                          setLegs((L) => L.slice(0, 2));
+                          toast("info", "Trimmed to 2 legs", "Combined ∑ mode uses one CE + one PE only.");
+                        }
+                      }}
                       className={`px-3 py-1.5 rounded-md text-xs font-semibold border transition ${
                         triggerMode === m ? "text-[var(--accent)]" : "text-[var(--muted)]"
                       }`}
@@ -848,6 +986,8 @@ export default function NewStrategy() {
           </div>
         )}
       </section>
+      </>}
+      {/* ── End manual builder ─────────────────────────────────────── */}
 
       {/* Sticky action bar */}
       <div className="sticky bottom-0 -mx-6 px-6 py-3 border-t flex gap-2 justify-between items-center"
@@ -857,19 +997,23 @@ export default function NewStrategy() {
         </div>
         <div className="flex gap-2">
           <button className="btn-ghost btn-sm" onClick={() => setConfirmOpen("cancel")}>Cancel</button>
-          <button className="btn-ghost btn-sm flex items-center gap-1" onClick={() => setConfirmOpen("save-draft")}>
-            <Save size={14}/>Save Draft
-          </button>
-          {triggerMode === "NONE" ? (
-            <button className="btn-danger btn-sm flex items-center gap-1"
-                    onClick={() => setConfirmOpen("execute-now")}>
-              <Zap size={14}/>Execute Now
-            </button>
-          ) : (
-            <button className="btn-primary btn-sm flex items-center gap-1"
-                    onClick={() => setConfirmOpen("start")}>
-              <Sparkles size={14}/>Start (Monitor)
-            </button>
+          {!defaultOnly && (
+            <>
+              <button className="btn-ghost btn-sm flex items-center gap-1" onClick={() => setConfirmOpen("save-draft")}>
+                <Save size={14}/>Save Draft
+              </button>
+              {triggerMode === "NONE" ? (
+                <button className="btn-danger btn-sm flex items-center gap-1"
+                        onClick={() => setConfirmOpen("execute-now")}>
+                  <Zap size={14}/>Execute Now
+                </button>
+              ) : (
+                <button className="btn-primary btn-sm flex items-center gap-1"
+                        onClick={() => setConfirmOpen("start")}>
+                  <Sparkles size={14}/>Start (Monitor)
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
