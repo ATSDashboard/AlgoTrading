@@ -901,7 +901,7 @@ export default function NewStrategy() {
               <li>{legs.length} legs · {totalUnits} units</li>
               <li>Estimated {creditDebit >= 0 ? "credit" : "debit"}: ₹{Math.abs(Math.round(creditDebit)).toLocaleString("en-IN")}</li>
               <li>Margin required ₹1,05,000 · available ₹8,45,000</li>
-              <li>Exit: SL ₹{stopLoss} · Target ₹{target} · Square-off {squareOff} IST</li>
+              <li>Exit rules from <b>Exit Rules & Kill Switches</b> section apply</li>
               {needsApproval && <li className="text-[var(--warn)]">⚠ Two-person approval will be requested ({maxLots} lots ≥ 5)</li>}
             </ul>
           </div>
