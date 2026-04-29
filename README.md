@@ -1,104 +1,108 @@
 # Theta Gainers Algo
 
-Production-grade multi-broker options selling platform for NIFTY/SENSEX with enterprise RMS, OMS, and compliance.
+Production-grade multi-broker NIFTY/SENSEX options selling platform with enterprise RMS, OMS, and SEBI compliance.
 
-**Phase 1 build in progress.** See `CLAUDE_CODE_BRIEF.md` for the full specification.
+> 👉 **New here? Read [`HANDOFF.md`](./HANDOFF.md) first.** It covers product spec, trader requirements, architecture, audit findings, build instructions, and what NOT to do — in one ~25-minute doc.
+
+---
+
+## Quick links
+
+| Doc | Purpose |
+|---|---|
+| **[HANDOFF.md](./HANDOFF.md)** | **The single source of truth.** Start here. |
+| [DEVELOPER_ASSIGNMENT.md](../DEVELOPER_ASSIGNMENT.md) | One-page brief sent to the developer originally |
+| [README.md](./README.md) | This file — overview only |
+
+---
+
+## What this is
+
+Two trader workflows on one screen:
+
+1. **Default Strategy** — one-click "sell deep-OTM strangle, ≥ 2.5% OTM, target ₹5,000 premium per ₹1Cr margin". Recommended for traders who shouldn't make manual decisions; admin can also restrict specific users to **Default-only** mode.
+2. **Manual builder** — pick strikes, lots, premium trigger (4 modes: Combined ∑ / Per ₹1Cr / Per-leg / Enter now), entry time window, exit rules, and place a custom multi-leg order.
+
+Multi-broker SOR routing + per-demat margin allocation + 3-layer pre-trade margin defense + hash-chained audit log + SEBI rate cap + freeze-qty iceberg slicer.
 
 ## Architecture at a glance
 
 ```
-React 18 + Vite + TS + Tailwind + shadcn/ui  (frontend/)
+React 18 + Vite + TS + Tailwind + Zustand + React Query     (frontend/)
         │  HTTPS + WebSocket
         ▼
-FastAPI + asyncio + SQLAlchemy 2.0 + Pydantic v2  (backend/)
+FastAPI + asyncio + SQLAlchemy 2.0 + Pydantic v2            (backend/)
   ├── auth        JWT + TOTP 2FA + IP allowlist
-  ├── brokers     Pluggable adapters (Paper, Axis, Zerodha*, Dhan*, Angel*)
+  ├── brokers     Paper, Zerodha (live), Axis/Monarch/JM (stubs)
   ├── strategy    State machine + WebSocket stream
-  ├── execution   OMS: idempotency, iceberg slicing, peg/re-quote, SOR
-  ├── risk        Pre-trade + runtime RMS, dead-man switch, circuit breaker
-  ├── data        Security master + quote cache
-  ├── audit       Hash-chained immutable log + S3 anchoring
-  ├── notify      WhatsApp/Telegram/Email/SMS/Phone
-  ├── health      Heartbeat + per-broker health
-  └── admin       Risk console, user mgmt, EOD recon
+  ├── execution   OMS: idempotency, iceberg, peg/re-quote, SOR
+  ├── risk        Pre-trade + runtime RMS
+  ├── audit       Hash-chained immutable log
+  ├── notify      WhatsApp/Telegram/Email/SMS
+  ├── analytics   Deep OTM strike scoring
+  ├── admin       User permissions, audit browser
+  └── data        Market data + security master
 
-PostgreSQL 15 (state + audit)  •  Redis 7 (cache + rate-limit bucket)
-
-*  adapter interface ready, implementation in Phase 1.5
+PostgreSQL 15 (state + audit)  •  Redis 7 (cache + rate-limit)
 ```
 
-## Compliance rules hard-coded in the system
+## Compliance hard-coded
 
 | Rule | Implementation |
-|------|----------------|
-| SEBI 10 orders/sec (non-institutional) | Token bucket in Redis, hard cap at **8/sec per user**, 20/sec global |
-| SEBI algo-ID tagging | Every order carries `SEBI_ALGO_ID` from env; rejected if missing |
-| Order-to-Trade ratio | Monitored live; auto-halt at OTR=100 (well under NSE's penalty threshold) |
-| NSE freeze qty NIFTY | 1,800 units/order max → auto-iceberg slice with 100ms jitter |
-| BSE freeze qty SENSEX | 1,000 units/order max → auto-iceberg slice |
-| No MARKET on OTM | Backend rejects MARKET orders on options; LIMIT only |
+|---|---|
+| SEBI ≤ 10 orders/sec | Token bucket in Redis, hard cap **8/sec** per user, 20/sec global |
+| SEBI algo-ID tagging | Every order carries `SEBI_ALGO_ID`; rejected if missing |
+| OTR monitoring | Live; auto-halt at OTR=100 (under NSE's penalty threshold) |
+| NIFTY freeze 1,800 | Auto-iceberg slice with 100ms jitter |
+| SENSEX freeze 1,000 | Auto-iceberg slice |
+| No MARKET on options | Backend rejects MARKET; LIMIT only |
+| Hash-chained audit | PG triggers block UPDATE/DELETE on `audit_log` |
+| Two-person approval | Required when lots ≥ 5 |
 
 ## Dev quickstart (paper mode, local)
 
 ```bash
-cp .env.example .env
-docker compose up -d postgres redis
-cd backend && uv sync && uv run alembic upgrade head
-uv run uvicorn app.main:app --reload --port 8000   # terminal 1
-cd ../frontend && pnpm install && pnpm dev          # terminal 2
-open http://localhost:5173
+# Backend
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -e .
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000          # terminal 1
+
+# Frontend
+cd ../frontend
+npm install
+npm run dev                                         # terminal 2
+
+# → http://localhost:5173
 ```
 
-Default admin: `admin / admin` — change on first login. 2FA setup shown after first auth.
+Required env vars: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `FERNET_KEY`,
+`KITE_API_KEY`, `KITE_API_SECRET`, `APP_ENV`. See `app/config.py`.
 
-## Directory map
+If backend is offline you can still see the UI — see HANDOFF §7.3 for the
+dev login bypass + default-only mode toggles.
 
-```
-backend/
-  app/
-    main.py           FastAPI entrypoint
-    config.py         Pydantic Settings (env-driven)
-    db.py             Async SQLAlchemy engine
-    auth/             Login, TOTP, JWT, IP allowlist, broker sessions
-    brokers/          Pluggable broker adapters
-      base.py         Abstract BrokerClient
-      paper.py        Mock broker (always available)
-      axis.py         Axis Direct RAPID adapter
-      registry.py     Broker registry / factory
-    strategy/         Strategy CRUD + state machine + WS stream
-    execution/        OMS: order placer, iceberg, peg/re-quote
-    risk/             Pre-trade + runtime RMS, dead-man switch
-    data/             Security master, quote cache
-    audit/            Hash-chained event log
-    notify/           Multi-channel alerts
-    health/           Health + liveness + per-broker status
-    admin/            Admin console, EOD recon, user mgmt
-    common/           Shared types, errors, constants
-  alembic/            Migrations
-  tests/              pytest
-frontend/
-  src/
-    pages/            Login, ConnectBroker, Dashboard, NewStrategy, Monitor, History, Settings/*, Admin/*
-    components/ui/    shadcn primitives
-    api/              React Query hooks
-    stores/           Zustand global state (auth, broker session)
-docs/
-  ARCHITECTURE.md, RUNBOOK.md, API.md, COMPLIANCE.md
-infra/
-  nginx/              Reverse proxy + SSL
-```
+## Recent work (highlights)
 
-## Build milestones
+- ✅ NewStrategy.tsx refactored from **1443 → 708 lines** (−51%); split into
+  9 focused components under `frontend/src/components/trade/`
+- ✅ Trade page features: Default Strategy CTA, multi-broker SOR, per-demat
+  margin allocation, 4-mode premium trigger, entry time window, default-only
+  trader mode, live margin gauge, full confirm modals on every action
+- ✅ Backend stubs for `/broker/*`, `/strategy/preview-margin`,
+  `/strategy/{id}/execute-now`, `/admin/users/{id}/permissions`
+- ✅ React Query hooks wiring frontend ↔ backend with offline fallback
+- ✅ Strike rounding rule: CE↑ / PE↓ on the underlying's grid, never closer
+  than the rule asks
 
-- [x] M1 — Scaffold + config + DB schema + broker abstraction + paper broker
-- [x] M2 — Auth module (login, 2FA, JWT, sessions, broker connect flow)
-- [x] M3 — Data module (security master sync + Redis quote cache + Zerodha adapter)
-- [ ] M3.5 — Remaining broker adapters (Axis, Monarch, JM) when API docs available
-- [ ] M4 — Strategy CRUD + state machine + WebSocket stream
-- [x] M5 — Execution OMS (idempotency + hash chain, iceberg dispatch, peg/re-quote, SOR, SEBI rate-limit wired)
-- [x] M6 — Risk RMS (pre-trade 9-check pipeline, runtime 10-check loop, dead-man switch, circuit breaker, MTM DD, trailing SL, lock-in, reconciliation)
-- [x] M7 — Audit (hash-chained append-only log, chain verification, S3 daily anchor) + Notify (WhatsApp/Telegram/Email/SMS/Voice with severity routing + retry)
-- [ ] M8 — Frontend: Login, ConnectBroker, Dashboard, NewStrategy, Monitor
-- [ ] M9 — Frontend: History, Settings/*, Admin/*, EOD Report
-- [x] M10 — Paper trading harness + load tests + CI/CD + external audit prep + runbook + go-live checklist
-```
+See full file map and audit findings in [HANDOFF.md](./HANDOFF.md).
+
+## Repos
+
+- **App (this repo):** https://github.com/ATSDashboard/AlgoTrading
+- **Backtest engine (separate):** https://github.com/ATSDashboard/ThetaBackTest
+
+## Contact
+
+- **Product owner:** Rohan Shah · `rohan@navingroup.in`
