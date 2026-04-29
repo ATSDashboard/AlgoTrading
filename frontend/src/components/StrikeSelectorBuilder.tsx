@@ -68,12 +68,28 @@ const DEFAULT_RULE: RuleNode = {all_of: [
   {filter: "OI_MIN", params: {min: 50000}},
 ]};
 
+type DistanceType = "percent" | "points" | "delta";
+
 export default function StrikeSelectorBuilder() {
+  // ── Primary distance criteria — the focal point ────────────────────
+  const [distType, setDistType] = useState<DistanceType>("percent");
+  const [shared, setShared] = useState(true);  // single value vs CE/PE-specific
+  const [ceVal, setCeVal] = useState<number>(3);
+  const [peVal, setPeVal] = useState<number>(3);
+
+  // ── Advanced filters (rule tree) ──────────────────────────────────
   const [ceRule, setCeRule] = useState<RuleNode>(DEFAULT_RULE);
   const [peRule, setPeRule] = useState<RuleNode>(DEFAULT_RULE);
   const [mirror, setMirror] = useState(true);
   const [activeSide, setActiveSide] = useState<"CE" | "PE">("CE");
   const [saveOpen, setSaveOpen] = useState<null | "CE" | "PE" | "BOTH">(null);
+
+  const distMeta: Record<DistanceType, {label: string; unit: string; step: string; placeholder: string}> = {
+    percent: {label: "% away from spot",   unit: "%",   step: "0.1", placeholder: "3.0"},
+    points:  {label: "Points away from spot", unit: "pts", step: "50",  placeholder: "1500"},
+    delta:   {label: "Absolute delta",      unit: "Δ",   step: "0.01", placeholder: "0.15"},
+  };
+  const dm = distMeta[distType];
 
   // When mirror is on, edits to either side propagate to the other
   useEffect(() => {
@@ -94,9 +110,9 @@ export default function StrikeSelectorBuilder() {
             <Target size={16} className="text-[var(--accent)]"/> Rule Builder
           </h3>
           <p className="text-xs text-[var(--muted)] mt-0.5">
-            Separate rules for CE & PE. Toggle <b>Mirror</b> to keep them in sync.
+            Pick distance metric (% / points / delta) — same for both legs or independent CE/PE.
             <span className="block mt-0.5">
-              <b>Strike selection only</b> — premium thresholds live in the <b>Premium Trigger</b> section. Auto-entry requires both to pass.
+              Premium thresholds live in the <b>Premium Trigger</b> section below. Auto-entry requires <b>both</b> to pass.
             </span>
           </p>
         </div>
@@ -115,48 +131,109 @@ export default function StrikeSelectorBuilder() {
         </div>
       </div>
 
-      {/* Mode tabs (mobile-friendly) — desktop shows side-by-side */}
-      <div className="md:hidden flex rounded-md border overflow-hidden" style={{borderColor:"var(--border)"}}>
-        {(["CE","PE"] as const).map(s => (
-          <button key={s} onClick={() => setActiveSide(s)}
-                  className="flex-1 px-4 py-2 text-xs font-semibold"
-                  style={{background: activeSide===s ? "var(--accent)" : "transparent",
-                          color: activeSide===s ? "white" : "var(--muted)"}}>
-            {s} Rule
-          </button>
-        ))}
-      </div>
-
-      <div className={`grid gap-4 ${mirror ? "" : "md:grid-cols-2"}`}>
-        {/* CE Rule (always shown desktop; mobile shows only active) */}
-        <div className={`${activeSide === "CE" ? "" : "hidden md:block"}`}>
-          <SideHeader side="CE" mirror={mirror}
-                      onLoadPreset={(n) => applyPresetTo("CE", n)}
-                      onSave={() => setSaveOpen("CE")}/>
-          <div className="card mt-2">
-            <RuleEditor rule={ceRule} onChange={setCeRule} depth={0}/>
+      {/* ── Primary Distance Criteria ────────────────────────────────── */}
+      <div className="card space-y-3" style={{borderTop:"3px solid var(--accent)"}}>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h4 className="font-semibold text-sm">Primary criteria · Distance from spot</h4>
+            <p className="text-[11px] text-[var(--muted)] mt-0.5">
+              Pick the metric, then set value{shared ? "" : "s"} for {shared ? "both legs" : "CE and PE separately"}.
+            </p>
           </div>
-        </div>
-
-        {/* PE Rule — hidden when mirror is ON (no point editing twice) */}
-        {!mirror && (
-          <div className={`${activeSide === "PE" ? "" : "hidden md:block"}`}>
-            <SideHeader side="PE" mirror={mirror}
-                        onLoadPreset={(n) => applyPresetTo("PE", n)}
-                        onSave={() => setSaveOpen("PE")}/>
-            <div className="card mt-2">
-              <RuleEditor rule={peRule} onChange={setPeRule} depth={0}/>
+          <div className="flex flex-wrap gap-2 items-center">
+            {/* Distance type radio */}
+            <div className="flex rounded-md border overflow-hidden" style={{borderColor:"var(--border)"}}>
+              {(["percent","points","delta"] as const).map(t => (
+                <button key={t} onClick={() => setDistType(t)}
+                        className="px-3 py-1.5 text-xs font-semibold"
+                        style={{background: distType===t ? "var(--accent)" : "transparent",
+                                color: distType===t ? "white" : "var(--muted)"}}>
+                  {t === "percent" ? "% away" : t === "points" ? "Points" : "Delta"}
+                </button>
+              ))}
             </div>
+            {/* Same / Independent toggle */}
+            <button onClick={() => setShared(s => !s)}
+                    className="btn-ghost btn-sm flex items-center gap-1.5"
+                    style={shared ? {color: "var(--accent)", borderColor: "var(--accent)"} : {}}>
+              {shared ? <Link2 size={13}/> : <Link2Off size={13}/>}
+              {shared ? "Same for CE & PE" : "Independent CE / PE"}
+            </button>
           </div>
-        )}
+        </div>
+
+        <div className={`grid gap-3 ${shared ? "md:grid-cols-1" : "md:grid-cols-2"}`}>
+          {shared ? (
+            <PrimaryInput side="BOTH" label={dm.label} unit={dm.unit} step={dm.step}
+                          placeholder={dm.placeholder} value={ceVal}
+                          onChange={(v) => { setCeVal(v); setPeVal(v); }}/>
+          ) : (
+            <>
+              <PrimaryInput side="CE" label={`CE ${dm.label}`} unit={dm.unit} step={dm.step}
+                            placeholder={dm.placeholder} value={ceVal} onChange={setCeVal}/>
+              <PrimaryInput side="PE" label={`PE ${dm.label}`} unit={dm.unit} step={dm.step}
+                            placeholder={dm.placeholder} value={peVal} onChange={setPeVal}/>
+            </>
+          )}
+        </div>
+
+        <div className="text-[11px] text-[var(--muted)] flex items-center gap-1.5 pt-1 border-t" style={{borderColor:"var(--border)"}}>
+          <FilterIcon size={11}/>
+          Strike selector chooses strikes by this rule. <b>Premium trigger</b> below decides when to enter.
+        </div>
       </div>
 
-      {mirror && (
-        <div className="text-[11px] text-[var(--muted)] flex items-center gap-1.5">
-          <Link2 size={11}/>
-          PE rule mirrors CE. Click <b>Mirror</b> above to break and edit each side independently.
+      {/* ── Advanced filters (rule tree) — collapsed by default ──────── */}
+      <details className="card" open={false}>
+        <summary className="cursor-pointer flex items-center justify-between text-sm font-semibold py-1">
+          <span className="flex items-center gap-2">
+            <FilterIcon size={14}/> Advanced filters
+            <span className="text-[10px] text-[var(--muted)] font-normal">
+              (OI, spread, volume, IV rank, regime, time window…)
+            </span>
+          </span>
+          <button onClick={(e) => { e.preventDefault(); setMirror(m => !m); }}
+                  className="btn-ghost btn-sm flex items-center gap-1.5"
+                  style={mirror ? {color: "var(--accent)", borderColor: "var(--accent)"} : {}}>
+            {mirror ? <Link2 size={13}/> : <Link2Off size={13}/>}
+            {mirror ? "Mirror CE ↔ PE" : "Independent CE / PE"}
+          </button>
+        </summary>
+
+        <div className="mt-3">
+          <div className="md:hidden flex rounded-md border overflow-hidden mb-2" style={{borderColor:"var(--border)"}}>
+            {(["CE","PE"] as const).map(s => (
+              <button key={s} onClick={() => setActiveSide(s)}
+                      className="flex-1 px-4 py-2 text-xs font-semibold"
+                      style={{background: activeSide===s ? "var(--accent)" : "transparent",
+                              color: activeSide===s ? "white" : "var(--muted)"}}>
+                {s} Rule
+              </button>
+            ))}
+          </div>
+
+          <div className={`grid gap-4 ${mirror ? "" : "md:grid-cols-2"}`}>
+            <div className={`${activeSide === "CE" ? "" : "hidden md:block"}`}>
+              <SideHeader side="CE" mirror={mirror}
+                          onLoadPreset={(n) => applyPresetTo("CE", n)}
+                          onSave={() => setSaveOpen("CE")}/>
+              <div className="mt-2">
+                <RuleEditor rule={ceRule} onChange={setCeRule} depth={0}/>
+              </div>
+            </div>
+            {!mirror && (
+              <div className={`${activeSide === "PE" ? "" : "hidden md:block"}`}>
+                <SideHeader side="PE" mirror={mirror}
+                            onLoadPreset={(n) => applyPresetTo("PE", n)}
+                            onSave={() => setSaveOpen("PE")}/>
+                <div className="mt-2">
+                  <RuleEditor rule={peRule} onChange={setPeRule} depth={0}/>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </details>
 
       {/* Save modal */}
       <FormModal open={saveOpen !== null} title={`Save ${saveOpen === "BOTH" ? "rule pair" : `${saveOpen} rule`} as preset`}
@@ -174,7 +251,10 @@ export default function StrikeSelectorBuilder() {
       <details className="text-xs">
         <summary className="cursor-pointer text-[var(--muted)]">Rule JSON (for dev/API)</summary>
         <pre className="mt-2 p-3 rounded font-mono overflow-x-auto" style={{background:"var(--panel-2)"}}>
-{JSON.stringify({ce: ceRule, pe: peRule, mirror}, null, 2)}
+{JSON.stringify({
+  primary: {distance_type: distType, shared, ce_value: ceVal, pe_value: peVal},
+  advanced: {ce: ceRule, pe: peRule, mirror},
+}, null, 2)}
         </pre>
       </details>
 
@@ -197,6 +277,33 @@ export default function StrikeSelectorBuilder() {
             {strike:"21700 PE", price:"₹14.20", oi:"540K", pass:true},
             {strike:"22500 PE", price:"₹50.00", oi:"1.6M", pass:false},
           ]}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PrimaryInput({side, label, unit, step, placeholder, value, onChange}:
+  {side: "CE"|"PE"|"BOTH"; label: string; unit: string; step: string;
+   placeholder: string; value: number; onChange: (v: number) => void}) {
+  const tone = side === "CE" ? "var(--danger)" : side === "PE" ? "var(--accent)" : "var(--ink)";
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-lg border"
+         style={{borderColor:"var(--border)", background:"var(--panel-2)"}}>
+      {side !== "BOTH" && (
+        <span className="px-2 py-0.5 rounded text-xs font-bold text-white"
+              style={{background: tone}}>{side}</span>
+      )}
+      <div className="flex-1">
+        <label className="text-[11px] uppercase tracking-wide text-[var(--muted)]">{label}</label>
+        <div className="flex items-center gap-2 mt-1">
+          <input type="number" step={step} placeholder={placeholder}
+                 value={value} onChange={(e) => onChange(+e.target.value)}
+                 className="input !py-1.5 !w-32 font-mono text-base font-semibold"/>
+          <span className="text-sm text-[var(--muted)]">{unit}</span>
+          <span className="text-[10px] text-[var(--muted)] ml-auto">
+            min · away from spot
+          </span>
         </div>
       </div>
     </div>

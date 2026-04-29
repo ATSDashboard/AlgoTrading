@@ -99,6 +99,11 @@ export default function NewStrategy() {
   // Trigger
   const [triggerMode, setTriggerMode] = useState<"COMBINED"|"SEPARATE"|"NONE">("COMBINED");
   const [combinedTrigger, setCombinedTrigger] = useState("80");
+  // SEPARATE mode: do legs execute independently (each fires on its own when met)
+  // or do both legs need to be in-threshold simultaneously?
+  const [legIndependence, setLegIndependence] = useState<"linked"|"independent">("linked");
+  const [perLegCe, setPerLegCe] = useState("");
+  const [perLegPe, setPerLegPe] = useState("");
 
   // Broker + demat selection (linked to RMS access control per trader)
   const [selectedBroker, setSelectedBroker] = useState("zerodha");
@@ -723,8 +728,53 @@ export default function NewStrategy() {
         )}
 
         {triggerMode === "SEPARATE" && (
-          <div className="text-sm text-[var(--muted)]">
-            Expand each leg (click ▸) to set its per-leg threshold. Entry fires when ALL enabled leg thresholds met simultaneously.
+          <div className="space-y-3">
+            <div className="grid md:grid-cols-2 gap-3">
+              <div className="flex items-center gap-2 p-2.5 rounded-lg border"
+                   style={{borderColor:"var(--border)", background:"var(--panel-2)"}}>
+                <span className="px-2 py-0.5 rounded text-xs font-bold text-white"
+                      style={{background:"var(--danger)"}}>CE</span>
+                <span className="text-xs text-[var(--muted)]">premium ≥ ₹</span>
+                <input type="number" step="0.05" className="input !py-1 !w-24 text-sm font-mono"
+                       value={perLegCe} onChange={(e) => setPerLegCe(e.target.value)} placeholder="3.00"/>
+              </div>
+              <div className="flex items-center gap-2 p-2.5 rounded-lg border"
+                   style={{borderColor:"var(--border)", background:"var(--panel-2)"}}>
+                <span className="px-2 py-0.5 rounded text-xs font-bold text-white"
+                      style={{background:"var(--accent)"}}>PE</span>
+                <span className="text-xs text-[var(--muted)]">premium ≥ ₹</span>
+                <input type="number" step="0.05" className="input !py-1 !w-24 text-sm font-mono"
+                       value={perLegPe} onChange={(e) => setPerLegPe(e.target.value)} placeholder="2.00"/>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs text-[var(--muted)]">Execution:</span>
+              <div className="flex rounded-md border overflow-hidden" style={{borderColor:"var(--border)"}}>
+                {(["linked","independent"] as const).map(m => (
+                  <button key={m} onClick={() => setLegIndependence(m)}
+                          className="px-3 py-1.5 text-xs font-semibold"
+                          style={{background: legIndependence===m ? "var(--accent)" : "transparent",
+                                  color: legIndependence===m ? "white" : "var(--muted)"}}>
+                    {m === "linked" ? "Both legs together" : "Each leg independent"}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[11px] text-[var(--muted)]">
+                {legIndependence === "linked"
+                  ? "Both CE and PE must be at threshold at the same moment to fire."
+                  : "Each leg fires on its own as soon as its threshold is met — other leg can wait."}
+              </span>
+            </div>
+
+            <details className="text-[11px] text-[var(--muted)]">
+              <summary className="cursor-pointer">Examples (click to expand)</summary>
+              <ul className="mt-2 space-y-1.5 pl-4 list-disc">
+                <li>CE 3% away & premium ≥ ₹3, PE 4% away & premium ≥ ₹2 → <b>Each leg independent</b></li>
+                <li>CE & PE both 2000 pts away, CE prem ≥ ₹3, PE prem ≥ ₹4 → <b>Both together</b></li>
+                <li>CE 4% away, PE 3% away, combined ≥ ₹7 → switch to <b>Combined ∑</b> mode</li>
+              </ul>
+            </details>
           </div>
         )}
 
