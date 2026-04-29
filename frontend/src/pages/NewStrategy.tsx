@@ -146,13 +146,12 @@ export default function NewStrategy() {
     );
   }
 
-  // ── Margin allocation controller ────────────────────────────────────
-  // Total budget (₹) to deploy across selected demats, plus per-demat cushion.
-  // Cushion = max(cushionPct% of demat balance, cushionMin ₹) kept untouched.
-  const [budgetCr,    setBudgetCr]    = useState<number>(0);     // 0 = no cap (use free margin)
-  const [cushionPct,  setCushionPct]  = useState<number>(5);     // 5% of each demat
-  const [cushionMin,  setCushionMin]  = useState<number>(500000);// ₹5L floor per demat
-  const [splitMode,   setSplitMode]   = useState<"weighted"|"equal"|"manual">("weighted");
+  // ── Margin allocation (simple) ────────────────────────────────────
+  // "Deploy ₹X total · keep ₹Y or Z% free in each demat"
+  // System always pulls weighted by available — no split mode picker.
+  const [budgetCr,    setBudgetCr]    = useState<number>(0);     // 0 = use full available
+  const [cushionPct,  setCushionPct]  = useState<number>(5);
+  const [cushionMin,  setCushionMin]  = useState<number>(500000);
 
   // Strike selection mode
   const [strikeMode, setStrikeMode] = useState<"manual"|"auto">("manual");
@@ -444,114 +443,53 @@ export default function NewStrategy() {
             </div>
           </div>
         )}
-        {/* ── Margin Allocation (only when multi-demat or multi-broker is on) ─ */}
-        {(multiDematMode || multiBrokerMode) && selectedDemats.length > 0 && (
-          <details className="pt-2 border-t" style={{borderColor:"var(--border)"}} open>
-            <summary className="cursor-pointer text-sm font-medium flex items-center gap-2">
-              <Shield size={13} className="text-[var(--accent)]"/>
-              Margin allocation
-              <span className="text-[10px] text-[var(--muted)] font-normal">
-                · how much capital to deploy and reserve per demat
-              </span>
-            </summary>
-            <div className="mt-3 space-y-3">
-              <div className="grid md:grid-cols-3 gap-3">
-                <div>
-                  <label className="label">Total budget</label>
-                  <div className="flex items-center gap-2">
-                    <input type="number" step="0.5" min="0" className="input font-mono"
-                           value={budgetCr} onChange={(e) => setBudgetCr(+e.target.value)}/>
-                    <span className="text-sm text-[var(--muted)]">Cr</span>
-                  </div>
-                  <div className="text-[10px] text-[var(--muted)] mt-0.5">
-                    {budgetCr === 0 ? "0 = use full free margin (no cap)" : `₹${(budgetCr).toFixed(2)}Cr cap across all selected demats`}
-                  </div>
-                </div>
-                <div>
-                  <label className="label">Cushion per demat (%)</label>
-                  <div className="flex items-center gap-2">
-                    <input type="number" step="0.5" min="0" max="50" className="input font-mono"
-                           value={cushionPct} onChange={(e) => setCushionPct(+e.target.value)}/>
-                    <span className="text-sm text-[var(--muted)]">%</span>
-                  </div>
-                  <div className="text-[10px] text-[var(--muted)] mt-0.5">Always free for slippage / SPAN spikes</div>
-                </div>
-                <div>
-                  <label className="label">Cushion floor (₹)</label>
-                  <div className="flex items-center gap-2">
-                    <input type="number" step="100000" min="0" className="input font-mono"
-                           value={cushionMin} onChange={(e) => setCushionMin(+e.target.value)}/>
-                  </div>
-                  <div className="text-[10px] text-[var(--muted)] mt-0.5">
-                    Max(% , floor) per demat — currently ₹{(cushionMin/100000).toFixed(1)}L
-                  </div>
-                </div>
-              </div>
+        {/* ── Margin Allocation (one-line: deploy ₹X · keep Y free per demat) ─ */}
+        {(multiDematMode || multiBrokerMode) && selectedDemats.length > 0 && (() => {
+          // Mocked balances — backend will provide live values
+          const balances = selectedDemats.map((_, i) => [1500000, 800000, 2200000, 1100000, 600000][i % 5] ?? 1000000);
+          const totalDeployable = balances.reduce((s, b) => s + Math.max(0, b - Math.max(b * (cushionPct/100), cushionMin)), 0);
+          const cap = budgetCr > 0 ? Math.min(budgetCr * 1_00_00_000, totalDeployable) : totalDeployable;
+          const breakdown = selectedDemats.map((id, i) => {
+            const b = balances[i];
+            const deployable = Math.max(0, b - Math.max(b * (cushionPct/100), cushionMin));
+            const alloc = totalDeployable > 0 ? cap * (deployable / totalDeployable) : 0;
+            return {id, alloc};
+          }).filter(x => x.alloc > 0);
 
-              <div>
-                <label className="label">Split mode</label>
-                <div className="inline-flex rounded-lg p-0.5 border" style={{borderColor:"var(--border)", background:"var(--panel-2)"}}>
-                  {([
-                    {k:"weighted", label:"Weighted (by free margin)"},
-                    {k:"equal",    label:"Equal split"},
-                    {k:"manual",   label:"Manual per demat"},
-                  ] as const).map(o => (
-                    <button key={o.k} type="button" onClick={() => setSplitMode(o.k)}
-                            className="px-3 py-1.5 rounded-md text-xs font-semibold transition"
-                            style={splitMode === o.k
-                              ? {background:"var(--panel)", color:"var(--ink)", boxShadow:"0 1px 2px rgba(0,0,0,0.08)"}
-                              : {background:"transparent", color:"var(--muted)"}}>
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
+          return (
+            <div className="pt-3 border-t space-y-2" style={{borderColor:"var(--border)"}}>
+              <div className="text-xs font-medium flex items-center gap-2">
+                <Shield size={12} className="text-[var(--accent)]"/>Margin allocation
               </div>
-
-              {/* Per-demat preview table */}
-              <div className="rounded-lg border overflow-hidden" style={{borderColor:"var(--border)"}}>
-                <div className="grid grid-cols-[1fr_90px_90px_90px_90px] text-[10px] uppercase tracking-wide text-[var(--muted)] px-3 py-2"
-                     style={{background:"var(--panel-2)"}}>
-                  <span>Demat</span><span className="text-right">Balance</span>
-                  <span className="text-right">Cushion</span><span className="text-right">Deployable</span><span className="text-right">Allocated</span>
-                </div>
-                {selectedDemats.map((id, i) => {
-                  // Mocked balances — backend will provide live values via /broker/{id}/margin
-                  const balance = [1500000, 800000, 2200000, 1100000, 600000][i % 5] ?? 1000000;
-                  const cushion = Math.max(balance * (cushionPct/100), cushionMin);
-                  const deployable = Math.max(0, balance - cushion);
-                  // Mock allocator: weighted = pro-rata to deployable; equal = even share; manual placeholder
-                  const totalDeployable = selectedDemats.reduce((s, _, j) => {
-                    const b = [1500000, 800000, 2200000, 1100000, 600000][j % 5] ?? 1000000;
-                    return s + Math.max(0, b - Math.max(b * (cushionPct/100), cushionMin));
-                  }, 0);
-                  const cap = budgetCr > 0 ? Math.min(budgetCr * 1_00_00_000, totalDeployable) : totalDeployable;
-                  let allocated = 0;
-                  if (splitMode === "equal") allocated = cap / selectedDemats.length;
-                  else if (splitMode === "weighted") allocated = totalDeployable > 0 ? cap * (deployable / totalDeployable) : 0;
-                  else allocated = deployable; // manual placeholder — would be editable per row
-                  allocated = Math.min(allocated, deployable);
-                  return (
-                    <div key={id} className="grid grid-cols-[1fr_90px_90px_90px_90px] px-3 py-2 text-xs border-t"
-                         style={{borderColor:"var(--border)"}}>
-                      <span className="font-mono">{id}</span>
-                      <span className="text-right font-mono">₹{(balance/100000).toFixed(2)}L</span>
-                      <span className="text-right font-mono text-[var(--muted)]">₹{(cushion/100000).toFixed(2)}L</span>
-                      <span className="text-right font-mono">₹{(deployable/100000).toFixed(2)}L</span>
-                      <span className="text-right font-mono font-semibold text-[var(--success)]">₹{(allocated/100000).toFixed(2)}L</span>
-                    </div>
-                  );
-                })}
+              <div className="flex items-center gap-2 flex-wrap text-sm">
+                <span className="text-[var(--muted)]">Deploy</span>
+                <input type="number" step="0.5" min="0" className="input !py-1 !w-24 font-mono text-sm"
+                       placeholder="0 = all"
+                       value={budgetCr || ""} onChange={(e) => setBudgetCr(+e.target.value || 0)}/>
+                <span className="text-[var(--muted)]">Cr · keep</span>
+                <input type="number" step="0.5" min="0" max="50" className="input !py-1 !w-16 font-mono text-sm"
+                       value={cushionPct} onChange={(e) => setCushionPct(+e.target.value)}/>
+                <span className="text-[var(--muted)]">% or</span>
+                <input type="number" step="100000" min="0" className="input !py-1 !w-28 font-mono text-sm"
+                       value={cushionMin} onChange={(e) => setCushionMin(+e.target.value)}/>
+                <span className="text-[var(--muted)]">₹ free per demat</span>
               </div>
-
-              <div className="text-[11px] text-[var(--muted)] leading-relaxed">
-                <b>How it works:</b> Each demat keeps <b>max({cushionPct}%, ₹{(cushionMin/100000).toFixed(1)}L)</b> as cushion.
-                The remaining is the <i>deployable</i> amount.
-                {budgetCr > 0 && <> Total budget ₹{budgetCr}Cr is split using <b>{splitMode}</b> mode (capped by deployable per demat).</>}
-                {" "}SOR fans live orders within these caps.
+              <div className="text-[11px] text-[var(--muted)]">
+                {budgetCr === 0
+                  ? <>Will use available margin across {selectedDemats.length} selected demat{selectedDemats.length>1?"s":""} (~₹{(cap/100000).toFixed(1)}L total) — </>
+                  : <>Will deploy ₹{budgetCr}Cr (capped to ₹{(cap/100000).toFixed(1)}L by available) — </>
+                }
+                pulls weighted by free balance:&nbsp;
+                {breakdown.map((b, i) => (
+                  <span key={b.id}>
+                    {i > 0 && ", "}
+                    <span className="font-mono text-[var(--ink)]">{b.id}</span> ₹{(b.alloc/100000).toFixed(1)}L
+                  </span>
+                ))}
               </div>
             </div>
-          </details>
-        )}
+          );
+        })()}
 
         <div className="text-[10px] text-[var(--muted)] flex items-center gap-1.5 pt-1 border-t" style={{borderColor:"var(--border)"}}>
           <AlertCircle size={11}/>
