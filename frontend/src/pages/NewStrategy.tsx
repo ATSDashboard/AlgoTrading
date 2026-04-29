@@ -15,6 +15,7 @@ import DefaultStrategyCTA from "@/components/trade/DefaultStrategyCTA";
 import PremiumTrigger from "@/components/trade/PremiumTrigger";
 import LegsTable from "@/components/trade/LegsTable";
 import { KV2 } from "@/components/trade/shared";
+import { useMarginSummary, useMyPermissions } from "@/api/hooks";
 
 import type { Leg, OptType } from "@/components/trade/types";
 
@@ -135,16 +136,21 @@ export default function NewStrategy() {
   const [entryTo, setEntryTo] = useState("10:30");
   const [restrictByTime, setRestrictByTime] = useState(true);
 
-  // ── "Default-only" trader mode (set by admin in Settings → Users) ─
-  // Reads localStorage flag for now; backend integration later.
-  const defaultOnly = typeof window !== "undefined" &&
-    localStorage.getItem("tg-default-only") === "1";
+  // ── "Default-only" trader mode ─────────────────────────────────────
+  // Backend is the source of truth (GET /admin/me/permissions);
+  // localStorage flag is kept as a dev override for offline testing.
+  const { data: perms } = useMyPermissions();
+  const localFlag = typeof window !== "undefined" && localStorage.getItem("tg-default-only") === "1";
+  const defaultOnly = perms?.default_only ?? localFlag;
 
-  // ── Margin snapshot (mock — backend will provide live values) ─────
-  const totalMargin    = 10_00_000;       // ₹10L gross account margin
-  const usedByActive   = 3_25_000;        // tied up by other active strategies
-  const blockedByOrders =   45_000;       // pending orders / awaiting fills
-  const freeMargin     = totalMargin - usedByActive - blockedByOrders;
+  // ── Margin snapshot ──────────────────────────────────────────────
+  // Backend (GET /broker/margin/summary) is the source of truth; falls
+  // back to flat numbers when the backend is unreachable (dev offline).
+  const { data: marginData } = useMarginSummary();
+  const totalMargin     = marginData?.total            ?? 10_00_000;
+  const usedByActive    = marginData?.used_by_active   ?? 3_25_000;
+  const blockedByOrders = marginData?.blocked_by_orders ?? 45_000;
+  const freeMargin      = marginData?.free             ?? (totalMargin - usedByActive - blockedByOrders);
 
   // Exit/RMS
   const [sl, setSl] = useState("3000");

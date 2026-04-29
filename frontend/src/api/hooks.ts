@@ -170,6 +170,76 @@ export function useCreateStrategy() {
   });
 }
 
+// ── Phase 2 backend hooks ───────────────────────────────────────────────────
+
+export interface BrokerOut { id: string; label: string; connected: boolean }
+export interface DematOut  { id: string; label: string; cap: string; assigned: boolean; balance: number }
+export interface MarginSummary { total: number; used_by_active: number; blocked_by_orders: number; free: number }
+export interface AllocationLine { demat_id: string; balance: number; cushion: number; deployable: number; allocated: number }
+export interface AllocationOut  { total_deployable: number; total_allocated: number; capped_by_budget: boolean; lines: AllocationLine[] }
+export interface MarginPreview  { required: number; free: number; exceeds: boolean; approval_required: boolean; needs_iceberg: boolean; slices: number }
+export interface UserPermissions { default_only: boolean; can_execute_now: boolean; can_use_multi_broker: boolean; max_lots_without_approval: number }
+
+export function useBrokerList() {
+  const token = useAuth((s) => s.token);
+  return useQuery<BrokerOut[]>({
+    queryKey: ["broker-list"],
+    queryFn: async () => (await api.get("/broker/list")).data,
+    enabled: !!token, staleTime: 60_000,
+  });
+}
+
+export function useDemats(broker: string) {
+  const token = useAuth((s) => s.token);
+  return useQuery<DematOut[]>({
+    queryKey: ["broker-demats", broker],
+    queryFn: async () => (await api.get(`/broker/${broker}/demats`)).data,
+    enabled: !!token && !!broker, staleTime: 30_000,
+  });
+}
+
+export function useMarginSummary() {
+  const token = useAuth((s) => s.token);
+  return useQuery<MarginSummary>({
+    queryKey: ["margin-summary"],
+    queryFn: async () => (await api.get("/broker/margin/summary")).data,
+    enabled: !!token, refetchInterval: 15_000,
+  });
+}
+
+export function usePreviewAllocation() {
+  return useMutation<AllocationOut, any, { demat_ids: string[]; budget_cr: number; cushion_pct: number; cushion_min: number }>({
+    mutationFn: async (body) => (await api.post("/broker/margin/allocate", body)).data,
+  });
+}
+
+export function usePreviewMargin() {
+  return useMutation<MarginPreview, any, any>({
+    mutationFn: async (body) => (await api.post("/strategy/preview-margin", body)).data,
+  });
+}
+
+export function useExecuteNow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => (await api.post(`/strategy/${id}/execute-now`)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["strategies"] });
+      toast("success", "Orders submitted", "Pre-trade RMS + iceberg slicer engaged");
+    },
+    onError: (e: any) => toast("error", "Execute failed", e.response?.data?.detail),
+  });
+}
+
+export function useMyPermissions() {
+  const token = useAuth((s) => s.token);
+  return useQuery<UserPermissions>({
+    queryKey: ["my-permissions"],
+    queryFn: async () => (await api.get("/admin/me/permissions")).data,
+    enabled: !!token, staleTime: 60_000,
+  });
+}
+
 // ── Heartbeat (dead-man switch source) ──────────────────────────────────────
 /** Frontend should start this on mount and leave running. */
 export function useHeartbeat() {
