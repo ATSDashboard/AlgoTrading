@@ -7,6 +7,8 @@ import {
 import ConfirmModal from "@/components/ConfirmModal";
 import { toast } from "@/components/Toast";
 import StrikeSelectorBuilder from "@/components/StrikeSelectorBuilder";
+import MarginStatusStrip from "@/components/trade/MarginStatusStrip";
+import { KV2 } from "@/components/trade/shared";
 
 type Side = "B" | "S";
 type OptType = "CE" | "PE";
@@ -502,40 +504,8 @@ export default function NewStrategy() {
       </section>
 
       {/* ── Margin Status — only the FREE margin is usable for new trades ──── */}
-      <section className="card !py-3">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-x-6 gap-y-3 items-center">
-          <div className="md:col-span-1">
-            <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">Free margin</div>
-            <div className="text-2xl font-mono font-bold text-[var(--success)] leading-tight">
-              ₹{(freeMargin/100000).toFixed(2)}<span className="text-sm text-[var(--muted)] ml-1">L</span>
-            </div>
-            <div className="text-[10px] text-[var(--muted)]">usable for new strategy</div>
-          </div>
-          <KV2 k="Total" v={`₹${(totalMargin/100000).toFixed(2)}L`}/>
-          <div>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">Used (active)</div>
-            <div className="font-mono font-semibold text-[var(--warn)]">−₹{(usedByActive/100000).toFixed(2)}L</div>
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">Blocked (pending)</div>
-            <div className="font-mono font-semibold text-[var(--warn)]">−₹{(blockedByOrders/100000).toFixed(2)}L</div>
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">
-              {((freeMargin/totalMargin)*100).toFixed(0)}% free
-            </div>
-            <div className="w-full h-2.5 rounded-full overflow-hidden relative" style={{background:"var(--panel-2)"}}>
-              {/* Blocked (translucent, sits behind used) */}
-              <div className="absolute inset-y-0 left-0" style={{width: `${((usedByActive+blockedByOrders)/totalMargin)*100}%`, background:"color-mix(in srgb, var(--warn) 35%, transparent)"}}/>
-              {/* Used (solid, on top) */}
-              <div className="absolute inset-y-0 left-0" style={{width: `${(usedByActive/totalMargin)*100}%`, background:"var(--warn)"}}/>
-            </div>
-          </div>
-        </div>
-        <div className="text-[10px] text-[var(--muted)] mt-3 pt-2 border-t" style={{borderColor:"var(--border)"}}>
-          New strategies are sized only against <b>free margin</b>. Pre-trade RMS rejects orders that exceed it.
-        </div>
-      </section>
+      <MarginStatusStrip totalMargin={totalMargin} usedByActive={usedByActive}
+                         blockedByOrders={blockedByOrders} freeMargin={freeMargin}/>
 
       {defaultOnly && (
         <div className="card border-2 !py-2.5"
@@ -1390,16 +1360,6 @@ export default function NewStrategy() {
 
 function Field({label, children}: {label: string; children: React.ReactNode}) {
   return <div><label className="label">{label}</label>{children}</div>;
-}
-
-/** Compact label/value cell — Sensibull-style key-value strip. */
-function KV2({k, v, accent}: {k: string; v: string; accent?: boolean}) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">{k}</div>
-      <div className={`font-mono ${accent ? "font-bold text-[var(--ink)]" : "font-semibold"}`}>{v}</div>
-    </div>
-  );
 }
 
 function QuoteStat({label, v, tone}: {label: string; v: string|number; tone?: "success"|"danger"}) {
