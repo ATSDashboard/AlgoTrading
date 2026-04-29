@@ -13,28 +13,10 @@ import EntryTimeWindow from "@/components/trade/EntryTimeWindow";
 import ExitRules from "@/components/trade/ExitRules";
 import DefaultStrategyCTA from "@/components/trade/DefaultStrategyCTA";
 import PremiumTrigger from "@/components/trade/PremiumTrigger";
+import LegsTable from "@/components/trade/LegsTable";
 import { KV2 } from "@/components/trade/shared";
 
-type Side = "B" | "S";
-type OptType = "CE" | "PE";
-type OrderKind = "LIMIT" | "LIMIT_WITH_BUFFER" | "MARKET";
-
-interface Leg {
-  id: string;
-  side: Side;
-  expiry: string;
-  strike: number;
-  type: OptType;
-  lots: number;
-  price: number;
-  orderKind: OrderKind;
-  inCombinedTrigger: boolean;
-  singleThreshold: number | null;
-  // Live quote + intraday anchors
-  ltp: number; bid: number; ask: number; bidQty: number; askQty: number; oi: number; vol: number;
-  high: number; low: number; open: number; close: number;
-  p_0920: number; p_0945: number; p_1030: number; p_1100: number; p_1200: number;
-}
+import type { Leg, OptType } from "@/components/trade/types";
 
 const TEMPLATES: Array<{name: string; kind: string; legs: Partial<Leg>[]}> = [
   { name: "Short Strangle", kind: "NEUTRAL",
@@ -410,241 +392,18 @@ export default function NewStrategy() {
       </section>
 
       {/* Legs */}
-      <section className="card space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold">Legs ({legs.length})</h2>
-            <div className="text-xs text-[var(--muted)] mt-0.5">
-              Click row to expand bid/ask/qty · ☑ column = include in combined trigger
-            </div>
-          </div>
-          <button onClick={addLeg}
-                  disabled={(triggerMode === "COMBINED" || triggerMode === "PER_CR") && legs.length >= 2}
-                  title={(triggerMode === "COMBINED" || triggerMode === "PER_CR") && legs.length >= 2
-                    ? `${triggerMode === "COMBINED" ? "Combined ∑" : "Per ₹1Cr"} mode is locked to 2 legs (CE + PE). Switch trigger mode to add more.`
-                    : undefined}
-                  className="btn-primary btn-sm flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed">
-            <Plus size={12}/>Add Leg
-          </button>
-        </div>
-
-        {/* Column headers — widths chosen so centered values align under their headers */}
-        <div className="grid grid-cols-[32px_60px_120px_140px_72px_64px_104px_72px_96px_96px] gap-2 text-[10px] uppercase tracking-wide text-[var(--muted)] px-2">
-          <span className="text-center" title="Include in combined trigger">∑</span>
-          <span className="text-center">B/S</span>
-          <span className="text-center">Expiry</span>
-          <span className="text-center">Strike</span>
-          <span className="text-center">Type</span>
-          <span className="text-center">Lots</span>
-          <span className="text-center">Order</span>
-          <span className="text-center">LTP</span>
-          <span className="text-center" title="Per-leg LIMIT price; in Per-leg trigger mode this IS the per-leg premium threshold.">Trade Price</span>
-          <span className="text-right pr-1">Actions</span>
-        </div>
-
-        {legs.map((l, i) => {
-          const expanded = expandedIds.has(l.id);
-          return (
-            <div key={l.id}
-                 className={`rounded-lg border overflow-hidden ${
-                   l.side === "S" ? "border-[color-mix(in_srgb,var(--danger)_20%,transparent)]"
-                                   : "border-[color-mix(in_srgb,var(--success)_20%,transparent)]"
-                 }`}
-                 style={{background: "var(--panel-2)"}}>
-
-              <div className="grid grid-cols-[32px_60px_120px_140px_72px_64px_104px_72px_96px_96px] gap-2 items-center p-2">
-                {/* Include in combined */}
-                <div className="flex justify-center">
-                  <input type="checkbox" checked={l.inCombinedTrigger}
-                         onChange={(e) => update(l.id, {inCombinedTrigger: e.target.checked})}
-                         title="Include this leg in the combined-premium trigger" className="cursor-pointer"/>
-                </div>
-
-                {/* B/S */}
-                <div className="flex rounded-md overflow-hidden border" style={{borderColor:"var(--border)"}}>
-                  {(["B","S"] as const).map((s) => (
-                    <button key={s} type="button" onClick={() => update(l.id, {side: s})}
-                            className={`flex-1 py-1 text-xs font-semibold ${l.side === s ? "text-white" : "text-[var(--muted)]"}`}
-                            style={{background: l.side === s ? (s === "B" ? "var(--success)" : "var(--danger)") : "transparent"}}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Expiry */}
-                <select className="input !py-1.5 text-sm" value={l.expiry}
-                        onChange={(e) => update(l.id, {expiry: e.target.value})}>
-                  <option value="2026-04-17">17 Apr (0d)</option>
-                  <option value="2026-04-24">24 Apr (7d)</option>
-                  <option value="2026-05-01">01 May (14d)</option>
-                  <option value="2026-05-29">29 May (M)</option>
-                </select>
-
-                {/* Strike */}
-                <div className="flex items-center rounded-md border" style={{borderColor:"var(--border)", background:"var(--panel)"}}>
-                  <button type="button" className="px-2 text-[var(--muted)] hover:text-[var(--ink)]"
-                          onClick={() => update(l.id, {strike: l.strike - (underlying==="NIFTY"?50:100)})}>−</button>
-                  <input type="number" className="flex-1 text-center bg-transparent text-sm font-mono py-1 focus:outline-none text-[var(--ink)]"
-                         value={l.strike} onChange={(e) => update(l.id, {strike: +e.target.value})}/>
-                  <button type="button" className="px-2 text-[var(--muted)] hover:text-[var(--ink)]"
-                          onClick={() => update(l.id, {strike: l.strike + (underlying==="NIFTY"?50:100)})}>+</button>
-                </div>
-
-                {/* Type */}
-                <div className="flex rounded-md overflow-hidden border" style={{borderColor:"var(--border)"}}>
-                  {(["CE","PE"] as const).map((t) => (
-                    <button key={t} type="button" onClick={() => update(l.id, {type: t})}
-                            className={`flex-1 py-1 text-xs font-semibold transition ${l.type === t ? "text-white" : "text-[var(--muted)]"}`}
-                            style={{background: l.type === t
-                              ? (t === "CE" ? "color-mix(in srgb, var(--danger) 60%, transparent)"
-                                             : "color-mix(in srgb, var(--accent) 60%, transparent)")
-                              : "transparent"}}>
-                      {t}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Lots (qty = lots × lotSize, enforced — no raw-units input) */}
-                <select className="input !py-1.5 text-sm font-mono text-center" value={l.lots}
-                        onChange={(e) => update(l.id, {lots: +e.target.value})}
-                        title={`1 lot = ${lotSize} units (${underlying} exchange). Total qty auto-snaps to lot multiples.`}>
-                  {Array.from({length: 30}).map((_, n) => <option key={n+1} value={n+1}>{n+1}</option>)}
-                </select>
-
-                {/* Order kind */}
-                <select className="input !py-1.5 text-xs text-center" value={l.orderKind}
-                        onChange={(e) => update(l.id, {orderKind: e.target.value as OrderKind})}
-                        title="MARKET disabled on options for safety (SEBI + wide spreads)">
-                  <option value="LIMIT">LIMIT</option>
-                  <option value="LIMIT_WITH_BUFFER">LIMIT+buf</option>
-                  <option value="MARKET" disabled>MARKET (off)</option>
-                </select>
-
-                {/* LTP only inline (bid/ask in expanded view) */}
-                <div className="text-sm font-mono font-semibold text-[var(--ink)] whitespace-nowrap text-center">
-                  {l.ltp.toFixed(2)}
-                </div>
-
-                {/* Trade Price — LIMIT price AND per-leg premium threshold (Per-leg mode).
-                    Disabled when entry is gated by Combined / Per-Cr (whole-strangle) logic. */}
-                <input type="number" step="0.05" value={l.price}
-                       disabled={l.orderKind === "MARKET" || triggerMode === "COMBINED" || triggerMode === "PER_CR"}
-                       title={
-                         triggerMode === "COMBINED" ? "Disabled — fires when CE+PE sum hits the combined threshold below."
-                         : triggerMode === "PER_CR" ? "Disabled — fires when premium-per-Cr ratio hits the threshold below."
-                         : triggerMode === "SEPARATE" ? "Trade price = this leg's premium threshold. Entry fires when this leg's bid ≥ this value."
-                         : "LIMIT price for the order."
-                       }
-                       onChange={(e) => update(l.id, {price: +e.target.value})}
-                       className={`input !py-1.5 text-sm font-mono text-center disabled:opacity-40 disabled:cursor-not-allowed ${
-                         triggerMode === "SEPARATE" ? "!border-[var(--accent)]" : ""
-                       }`}/>
-
-                <div className="flex gap-0.5 justify-end items-center">
-                  <button type="button" title={expanded ? "Hide details" : "Show quote details"}
-                          className={`p-1.5 rounded-md transition ${expanded ? "text-[var(--accent)]" : "text-[var(--muted)] hover:text-[var(--ink)]"}`}
-                          style={expanded ? {background:"color-mix(in srgb, var(--accent) 15%, transparent)"} : {}}
-                          onClick={() => toggleExpanded(l.id)}>
-                    <BarChart2 size={14}/>
-                  </button>
-                  <button type="button" title="Duplicate leg" className="p-1.5 rounded-md text-[var(--muted)] hover:text-[var(--ink)]"
-                          onClick={() => duplicateLeg(l.id)}><Copy size={13}/></button>
-                  <button type="button" title="Remove leg" disabled={legs.length <= 1}
-                          className="p-1.5 rounded-md text-[var(--muted)] hover:text-[var(--danger)] disabled:opacity-30"
-                          onClick={() => removeLeg(l.id)}><Trash2 size={13}/></button>
-                </div>
-              </div>
-
-              {/* Expanded live-quote panel */}
-              {expanded && (
-                <div className="border-t p-4 space-y-4" style={{borderColor:"var(--border)", background:"var(--panel)"}}>
-                  {/* Row 1: core quote */}
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-[var(--muted)] mb-2">Live Quote</div>
-                    <div className="grid grid-cols-7 gap-3">
-                      <QuoteStat label="Bid" v={l.bid} tone="success"/>
-                      <QuoteStat label="Ask" v={l.ask} tone="danger"/>
-                      <QuoteStat label="Bid Qty" v={l.bidQty}/>
-                      <QuoteStat label="Ask Qty" v={l.askQty}/>
-                      <QuoteStat label="Spread %" v={+(((l.ask-l.bid)/l.ltp)*100).toFixed(2)}/>
-                      <QuoteStat label="OI" v={`${(l.oi/1_00_000).toFixed(1)}L`}/>
-                      <QuoteStat label="Volume" v={l.vol.toLocaleString("en-IN")}/>
-                    </div>
-                  </div>
-
-                  {/* Row 2: Open / High / Low / Close */}
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-[var(--muted)] mb-2">Today's Range</div>
-                    <div className="grid grid-cols-8 gap-3">
-                      <QuoteStat label="Open" v={l.open}/>
-                      <QuoteStat label="High" v={l.high} tone="success"/>
-                      <QuoteStat label="Low" v={l.low} tone="danger"/>
-                      <QuoteStat label="Prev Close" v={l.close}/>
-                      <QuoteStat label="% Chg" v={`${(((l.ltp-l.close)/l.close)*100).toFixed(2)}%`}
-                                 tone={l.ltp >= l.close ? "success" : "danger"}/>
-                      <QuoteStat label="IV" v="16.5%"/>
-                      <QuoteStat label="Delta" v="0.12"/>
-                      <QuoteStat label="Theta" v="-0.85"/>
-                    </div>
-                  </div>
-
-                  {/* Row 3: Intraday price anchors */}
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider text-[var(--muted)] mb-2">Intraday Snapshots (IST)</div>
-                    <div className="grid grid-cols-5 gap-3">
-                      <QuoteStat label="09:20" v={l.p_0920}/>
-                      <QuoteStat label="09:45" v={l.p_0945}/>
-                      <QuoteStat label="10:30" v={l.p_1030}/>
-                      <QuoteStat label="11:00" v={l.p_1100}/>
-                      <QuoteStat label="12:00" v={l.p_1200}/>
-                    </div>
-                  </div>
-
-                  {/* Per-leg threshold when SEPARATE trigger mode */}
-                  {triggerMode === "SEPARATE" && (
-                    <div className="flex items-center gap-2 pt-3 border-t" style={{borderColor:"var(--border)"}}>
-                      <span className="text-[var(--muted)] text-xs">Per-leg trigger: this leg's bid ≥ ₹</span>
-                      <input type="number" step="0.05" className="input !py-1 !w-28 text-sm font-mono"
-                             value={l.singleThreshold ?? ""} placeholder="auto"
-                             onChange={(e) => update(l.id, {singleThreshold: e.target.value ? +e.target.value : null})}/>
-                      <span className="text-[var(--muted)] text-xs">(fires when threshold met)</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        <div className="flex flex-wrap gap-4 pt-2 border-t" style={{borderColor:"var(--border)"}}>
-          <Adjust label="Shift"/><Adjust label="Width"/><Adjust label="Hedge"/>
-          <div className="flex items-center gap-2 ml-auto">
-            <span className="text-xs text-[var(--muted)]">Multiplier</span>
-            <select className="input !py-1.5 !w-20 text-sm font-mono">
-              {[1,2,3,5,10].map((n) => <option key={n}>{n}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between pt-3 border-t text-sm" style={{borderColor:"var(--border)"}}>
-          <div className="flex gap-5 flex-wrap">
-            <span className="text-[var(--muted)]">Legs in ∑</span><span className="font-mono">{legsInTrigger}/{legs.length}</span>
-            <span className="text-[var(--muted)]">Net Qty</span><span className="font-mono">{totalUnits}u</span>
-            <span className="text-[var(--muted)]">{creditDebit >= 0 ? "Credit" : "Debit"}</span>
-            <span className={`font-mono font-semibold ${creditDebit >= 0 ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
-              ₹{Math.abs(Math.round(creditDebit)).toLocaleString("en-IN")}
-            </span>
-            {needsSlice && <span className="chip-yellow">iceberg {slices} orders</span>}
-          </div>
-          <button className="btn-ghost btn-sm flex items-center gap-1"
-                  onClick={() => {
-                    setLegs(legs.map(l => ({...l, price: 0, ...mockQuote(l.strike, l.type)})));
-                    toast("info","Prices refreshed from live chain");
-                  }}>
-            <RotateCcw size={12}/>Reset Prices
-          </button>
-        </div>
-      </section>
+      <LegsTable
+        legs={legs} underlying={underlying} lotSize={lotSize}
+        triggerMode={triggerMode}
+        expandedIds={expandedIds} toggleExpanded={toggleExpanded}
+        update={update} addLeg={addLeg} removeLeg={removeLeg} duplicateLeg={duplicateLeg}
+        resetPrices={() => {
+          setLegs(legs.map(l => ({...l, price: 0, ...mockQuote(l.strike, l.type)})));
+          toast("info", "Prices refreshed from live chain");
+        }}
+        legsInTrigger={legsInTrigger} totalUnits={totalUnits}
+        creditDebit={creditDebit} needsSlice={needsSlice} slices={slices}
+      />
 
       {/* Entry Time Window — gates entries to a chosen intraday window */}
       <EntryTimeWindow
@@ -931,34 +690,6 @@ export default function NewStrategy() {
     </div>
   );
 }
-
-function Field({label, children}: {label: string; children: React.ReactNode}) {
-  return <div><label className="label">{label}</label>{children}</div>;
-}
-
-function QuoteStat({label, v, tone}: {label: string; v: string|number; tone?: "success"|"danger"}) {
-  const col = tone === "success" ? "var(--success)" : tone === "danger" ? "var(--danger)" : "var(--ink)";
-  return (
-    <div>
-      <div className="text-[10px] text-[var(--muted)] uppercase tracking-wide">{label}</div>
-      <div className="font-mono font-semibold" style={{color: col}}>{v}</div>
-    </div>
-  );
-}
-
-function Adjust({label}: {label: string}) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-[var(--muted)]">{label}</span>
-      <div className="flex items-center rounded-md border" style={{borderColor:"var(--border)"}}>
-        <button type="button" className="px-2 py-1 text-[var(--muted)] hover:text-[var(--ink)]">−</button>
-        <span className="px-2 font-mono text-xs w-8 text-center">—</span>
-        <button type="button" className="px-2 py-1 text-[var(--muted)] hover:text-[var(--ink)]">+</button>
-      </div>
-    </div>
-  );
-}
-
 function ToggleRow({label, enabled, onChange, children}:
   {label: string; enabled: boolean; onChange: (v: boolean) => void; children?: React.ReactNode}) {
   return (
