@@ -285,13 +285,12 @@ export default function NewStrategy() {
       </div>
 
       {/* ── Broker & Demat — GLOBAL: applies to every strategy on this page ─── */}
-      <section className="card space-y-3"
-               style={{borderTop:"3px solid var(--accent)"}}>
+      <section className="card space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <Shield size={16} className="text-[var(--accent)]"/>
             <h2 className="font-semibold">Broker & Demat</h2>
-            <span className="chip-blue text-[10px]">APPLIES TO ALL · DEFAULT + MANUAL</span>
+            <span className="text-[10px] text-[var(--muted)]">applies to every order on this page</span>
           </div>
           <label className="flex items-center gap-2 text-xs cursor-pointer">
             <input type="checkbox" checked={multiDematMode}
@@ -361,41 +360,34 @@ export default function NewStrategy() {
 
       {/* ── Margin Status — only the FREE margin is usable for new trades ──── */}
       <section className="card !py-3">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex-1 min-w-[200px]">
-            <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">Free margin (usable for new strategy)</div>
-            <div className="text-2xl font-mono font-bold text-[var(--success)]">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-x-6 gap-y-3 items-center">
+          <div className="md:col-span-1">
+            <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">Free margin</div>
+            <div className="text-2xl font-mono font-bold text-[var(--success)] leading-tight">
               ₹{(freeMargin/100000).toFixed(2)}<span className="text-sm text-[var(--muted)] ml-1">L</span>
             </div>
+            <div className="text-[10px] text-[var(--muted)]">usable for new strategy</div>
           </div>
-          <div className="flex flex-wrap gap-4 text-xs">
-            <div>
-              <div className="text-[var(--muted)]">Total margin</div>
-              <div className="font-mono">₹{(totalMargin/100000).toFixed(2)}L</div>
+          <KV2 k="Total" v={`₹${(totalMargin/100000).toFixed(2)}L`}/>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">Used (active)</div>
+            <div className="font-mono font-semibold text-[var(--warn)]">−₹{(usedByActive/100000).toFixed(2)}L</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">Blocked (pending)</div>
+            <div className="font-mono font-semibold text-[var(--warn)]">−₹{(blockedByOrders/100000).toFixed(2)}L</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">
+              {((freeMargin/totalMargin)*100).toFixed(0)}% free
             </div>
-            <div>
-              <div className="text-[var(--muted)]">Used (active)</div>
-              <div className="font-mono text-[var(--warn)]">−₹{(usedByActive/100000).toFixed(2)}L</div>
-            </div>
-            <div>
-              <div className="text-[var(--muted)]">Blocked (pending)</div>
-              <div className="font-mono text-[var(--warn)]">−₹{(blockedByOrders/100000).toFixed(2)}L</div>
-            </div>
-            <div className="border-l pl-4" style={{borderColor:"var(--border)"}}>
-              <div className="text-[var(--muted)]">Margin bar</div>
-              <div className="w-44 h-2 rounded-full mt-1" style={{background:"var(--panel-2)"}}>
-                <div className="h-full rounded-full" style={{
-                  width: `${(usedByActive/totalMargin)*100}%`,
-                  background:"var(--warn)"
-                }}/>
-              </div>
-              <div className="text-[10px] text-[var(--muted)] mt-0.5">
-                {((freeMargin/totalMargin)*100).toFixed(0)}% free
-              </div>
+            <div className="w-full h-2 rounded-full overflow-hidden" style={{background:"var(--panel-2)"}}>
+              <div className="h-full" style={{width: `${(usedByActive/totalMargin)*100}%`, background:"var(--warn)"}}/>
+              <div className="h-full -mt-2" style={{width: `${((usedByActive+blockedByOrders)/totalMargin)*100}%`, background:"color-mix(in srgb, var(--warn) 50%, transparent)"}}/>
             </div>
           </div>
         </div>
-        <div className="text-[10px] text-[var(--muted)] mt-2 pt-2 border-t" style={{borderColor:"var(--border)"}}>
+        <div className="text-[10px] text-[var(--muted)] mt-3 pt-2 border-t" style={{borderColor:"var(--border)"}}>
           New strategies are sized only against <b>free margin</b>. Pre-trade RMS rejects orders that exceed it.
         </div>
       </section>
@@ -412,55 +404,40 @@ export default function NewStrategy() {
       )}
 
       {/* ── Default Strategy CTA — one-click safe entry ────────────────── */}
-      <section className="card border-2"
-               style={{borderColor:"color-mix(in srgb, var(--accent) 50%, transparent)",
-                       background:"color-mix(in srgb, var(--accent) 6%, var(--panel))"}}>
-        <div className="flex items-start gap-4 flex-wrap">
-          <div className="flex-1 min-w-[260px]">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <Rocket size={18} className="text-[var(--accent)]"/>
+      <section className="card"
+               style={{background:"color-mix(in srgb, var(--accent) 5%, var(--panel))"}}>
+        <div className="grid md:grid-cols-[1fr_240px] gap-5 items-center">
+          {/* Left — title + key-value strip */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Rocket size={16} className="text-[var(--accent)]"/>
               <h2 className="font-semibold text-base">Default Strategy · Deep OTM Strangle</h2>
-              <span className="chip-blue">RECOMMENDED</span>
-              <span className="text-[10px] text-[var(--muted)] ml-auto">
-                Routes via <b className="text-[var(--ink)] font-mono">{selectedBroker.toUpperCase()}</b> · {selectedDemats.length === 1 ? selectedDemats[0] : `${selectedDemats.length} demats (SOR)`}
-              </span>
             </div>
-            <div className="text-xs text-[var(--muted)] leading-relaxed">
-              Sell CE + PE at <b>min {DEFAULT_DISTANCE_PCT}% OTM</b>, strikes <b>rounded further from spot</b> (CE↑, PE↓ on the {strikeGrid}-pt grid — never closer than the rule).
-              Target <b>₹{DEFAULT_TARGET_PER_CR.toLocaleString("en-IN")} per ₹1Cr margin</b>.
-              One click, no manual entry — eliminates strike/qty mistakes.
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm">
+              <KV2 k="Spot"      v={spot.toLocaleString("en-IN")}/>
+              <KV2 k="CE strike" v={String(defaultStrikesPreview.ce)} accent/>
+              <KV2 k="PE strike" v={String(defaultStrikesPreview.pe)} accent/>
+              <KV2 k="Distance"  v={`≥ ${DEFAULT_DISTANCE_PCT}% OTM`}/>
+              <KV2 k="Lot size"  v={`${lotSize}u`}/>
+              <KV2 k="Margin/lot" v={`~₹${(marginPerLot/1000).toFixed(0)}K`}/>
+              <KV2 k="Target"    v={`₹${(DEFAULT_TARGET_PER_CR/1000).toFixed(0)}K/Cr`}/>
+              <KV2 k="Routes via" v={`${selectedBroker.toUpperCase()} · ${selectedDemats[0] ?? "—"}`}/>
             </div>
-            <div className="mt-2 flex items-center gap-4 text-xs flex-wrap">
-              <span className="text-[var(--muted)]">Spot</span>
-              <span className="font-mono">{spot.toLocaleString("en-IN")}</span>
-              <span className="text-[var(--muted)]">→ CE</span>
-              <span className="font-mono font-semibold">{defaultStrikesPreview.ce}</span>
-              <span className="text-[var(--muted)]">PE</span>
-              <span className="font-mono font-semibold">{defaultStrikesPreview.pe}</span>
-              <span className="text-[var(--muted)]">·</span>
-              <span className="text-[var(--muted)]">Lot</span>
-              <span className="font-mono">{lotSize}u</span>
-              <span className="text-[var(--muted)]">·</span>
-              <span className="text-[var(--muted)]">Margin/lot</span>
-              <span className="font-mono">~₹{(marginPerLot/1000).toFixed(0)}K</span>
+            <div className="text-[11px] text-[var(--muted)] mt-3">
+              Strikes round <b>further from spot</b> on the {strikeGrid}-pt grid — never closer than the rule.
             </div>
           </div>
-          <div className="flex flex-col gap-2 items-stretch min-w-[220px]">
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-[var(--muted)] whitespace-nowrap">Symbol</label>
-              <select className="input !py-1.5 text-sm font-mono flex-1"
-                      value={underlying} onChange={(e) => setUnderlying(e.target.value as "NIFTY" | "SENSEX")}>
-                <option value="NIFTY">NIFTY · spot 24,812 · lot 65 · grid 50</option>
-                <option value="SENSEX">SENSEX · spot 81,204 · lot 20 · grid 100</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-[var(--muted)] whitespace-nowrap">Lots</label>
-              <select id="default-lots" defaultValue="1"
-                      className="input !py-1.5 text-sm font-mono flex-1">
-                {[1,2,3,5,10,15,20].map(n => <option key={n} value={n}>{n} lot{n>1?"s":""} ({(n*lotSize)}u)</option>)}
-              </select>
-            </div>
+
+          {/* Right — pickers + actions */}
+          <div className="flex flex-col gap-2">
+            <select className="input !py-2 text-sm"
+                    value={underlying} onChange={(e) => setUnderlying(e.target.value as "NIFTY" | "SENSEX")}>
+              <option value="NIFTY">NIFTY · lot 65</option>
+              <option value="SENSEX">SENSEX · lot 20</option>
+            </select>
+            <select id="default-lots" defaultValue="1" className="input !py-2 text-sm font-mono">
+              {[1,2,3,5,10,15,20].map(n => <option key={n} value={n}>{n} lot{n>1?"s":""} · {n*lotSize}u/leg</option>)}
+            </select>
             <button className="btn-primary flex items-center justify-center gap-2 py-2.5"
                     onClick={() => {
                       const sel = document.getElementById("default-lots") as HTMLSelectElement;
@@ -468,7 +445,7 @@ export default function NewStrategy() {
                       setPendingExecuteAfterLoad(false);
                       setConfirmOpen("load-default");
                     }}>
-              <Rocket size={14}/> Load Default Strategy
+              <Rocket size={14}/> Load Strategy
             </button>
             <button className="btn-danger btn-sm flex items-center justify-center gap-1"
                     onClick={() => {
@@ -477,11 +454,8 @@ export default function NewStrategy() {
                       setPendingExecuteAfterLoad(true);
                       setConfirmOpen("load-default");
                     }}>
-              <Zap size={14}/> Load + Execute Now
+              <Zap size={14}/> Load + Execute
             </button>
-            <div className="text-[10px] text-[var(--muted)] text-center">
-              Pre-fills legs below — edit before execute if needed
-            </div>
           </div>
         </div>
       </section>
@@ -1152,6 +1126,16 @@ export default function NewStrategy() {
 
 function Field({label, children}: {label: string; children: React.ReactNode}) {
   return <div><label className="label">{label}</label>{children}</div>;
+}
+
+/** Compact label/value cell — Sensibull-style key-value strip. */
+function KV2({k, v, accent}: {k: string; v: string; accent?: boolean}) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">{k}</div>
+      <div className={`font-mono ${accent ? "font-bold text-[var(--ink)]" : "font-semibold"}`}>{v}</div>
+    </div>
+  );
 }
 
 function QuoteStat({label, v, tone}: {label: string; v: string|number; tone?: "success"|"danger"}) {
