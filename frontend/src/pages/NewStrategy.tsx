@@ -100,11 +100,9 @@ export default function NewStrategy() {
   const [triggerMode, setTriggerMode] = useState<"COMBINED"|"PER_CR"|"SEPARATE"|"NONE">("COMBINED");
   const [combinedTrigger, setCombinedTrigger] = useState("80");
   const [perCrTrigger, setPerCrTrigger] = useState("5000");  // ₹/Cr
-  // SEPARATE mode: do legs execute independently (each fires on its own when met)
-  // or do both legs need to be in-threshold simultaneously?
+  // SEPARATE mode: per-leg thresholds live ON the leg (l.price = Trade Price = threshold).
+  // legIndependence = should each leg fire independently or both at once?
   const [legIndependence, setLegIndependence] = useState<"linked"|"independent">("linked");
-  const [perLegCe, setPerLegCe] = useState("");
-  const [perLegPe, setPerLegPe] = useState("");
 
   // Broker + demat selection (linked to RMS access control per trader)
   const [selectedBroker, setSelectedBroker] = useState("zerodha");
@@ -687,7 +685,7 @@ export default function NewStrategy() {
         <div className="grid grid-cols-[24px_56px_110px_128px_72px_72px_96px_80px_96px_84px] gap-2 text-[10px] uppercase tracking-wide text-[var(--muted)] px-1">
           <span title="Include in combined trigger">∑</span>
           <span>B/S</span><span>Expiry</span><span>Strike</span><span>Type</span><span>Lots</span>
-          <span>Order</span><span>LTP</span><span>Price</span><span className="text-right pr-1">Actions</span>
+          <span>Order</span><span>LTP</span><span title="Per-leg LIMIT price; in Per-leg trigger mode this IS the per-leg premium threshold.">Trade Price</span><span className="text-right pr-1">Actions</span>
         </div>
 
         {legs.map((l, i) => {
@@ -771,14 +769,20 @@ export default function NewStrategy() {
                   {l.ltp.toFixed(2)}
                 </div>
 
-                {/* Target price (for LIMIT) — read-only when Combined ∑ trigger is active */}
+                {/* Trade Price — LIMIT price AND per-leg premium threshold (Per-leg mode).
+                    Disabled when entry is gated by Combined / Per-Cr (whole-strangle) logic. */}
                 <input type="number" step="0.05" value={l.price}
-                       disabled={l.orderKind === "MARKET" || triggerMode === "COMBINED"}
-                       title={triggerMode === "COMBINED"
-                          ? "Disabled in Combined ∑ mode — fires when CE+PE sum hits the combined threshold below."
-                          : undefined}
+                       disabled={l.orderKind === "MARKET" || triggerMode === "COMBINED" || triggerMode === "PER_CR"}
+                       title={
+                         triggerMode === "COMBINED" ? "Disabled — fires when CE+PE sum hits the combined threshold below."
+                         : triggerMode === "PER_CR" ? "Disabled — fires when premium-per-Cr ratio hits the threshold below."
+                         : triggerMode === "SEPARATE" ? "Trade price = this leg's premium threshold. Entry fires when this leg's bid ≥ this value."
+                         : "LIMIT price for the order."
+                       }
                        onChange={(e) => update(l.id, {price: +e.target.value})}
-                       className="input !py-1.5 text-sm font-mono disabled:opacity-40 disabled:cursor-not-allowed"/>
+                       className={`input !py-1.5 text-sm font-mono disabled:opacity-40 disabled:cursor-not-allowed ${
+                         triggerMode === "SEPARATE" ? "!border-[var(--accent)]" : ""
+                       }`}/>
 
                 <div className="flex gap-0.5 justify-end items-center">
                   <button type="button" title={expanded ? "Hide details" : "Show quote details"}
@@ -1031,22 +1035,27 @@ export default function NewStrategy() {
 
         {triggerMode === "SEPARATE" && (
           <div className="space-y-3">
-            <div className="grid md:grid-cols-2 gap-3">
-              <div className="flex items-center gap-2 p-2.5 rounded-lg border"
-                   style={{borderColor:"var(--border)", background:"var(--panel-2)"}}>
-                <span className="px-2 py-0.5 rounded text-xs font-bold text-white"
-                      style={{background:"var(--danger)"}}>CE</span>
-                <span className="text-xs text-[var(--muted)]">premium ≥ ₹</span>
-                <input type="number" step="0.05" className="input !py-1 !w-24 text-sm font-mono"
-                       value={perLegCe} onChange={(e) => setPerLegCe(e.target.value)} placeholder="3.00"/>
+            <div className="rounded-lg border p-3 text-xs"
+                 style={{borderColor:"color-mix(in srgb, var(--accent) 40%, transparent)",
+                         background:"color-mix(in srgb, var(--accent) 5%, transparent)"}}>
+              <div className="flex items-start gap-2">
+                <Activity size={13} className="text-[var(--accent)] mt-0.5"/>
+                <div>
+                  <b>Thresholds = each leg's Trade Price</b> in the Legs table above.
+                  Edit them there; entry fires when each leg's bid ≥ its Trade Price.
+                  No duplicate input — single source of truth.
+                </div>
               </div>
-              <div className="flex items-center gap-2 p-2.5 rounded-lg border"
-                   style={{borderColor:"var(--border)", background:"var(--panel-2)"}}>
-                <span className="px-2 py-0.5 rounded text-xs font-bold text-white"
-                      style={{background:"var(--accent)"}}>PE</span>
-                <span className="text-xs text-[var(--muted)]">premium ≥ ₹</span>
-                <input type="number" step="0.05" className="input !py-1 !w-24 text-sm font-mono"
-                       value={perLegPe} onChange={(e) => setPerLegPe(e.target.value)} placeholder="2.00"/>
+              <div className="mt-2 flex gap-3 flex-wrap pl-5">
+                {legs.map((l) => (
+                  <span key={l.id} className="flex items-center gap-1.5 text-xs">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white"
+                          style={{background: l.type === "CE" ? "var(--danger)" : "var(--accent)"}}>{l.type}</span>
+                    <span className="font-mono">{l.strike}</span>
+                    <span className="text-[var(--muted)]">≥</span>
+                    <span className="font-mono font-semibold">₹{l.price.toFixed(2)}</span>
+                  </span>
+                ))}
               </div>
             </div>
 
