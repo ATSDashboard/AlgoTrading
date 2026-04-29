@@ -9,6 +9,9 @@ import { toast } from "@/components/Toast";
 import StrikeSelectorBuilder from "@/components/StrikeSelectorBuilder";
 import MarginStatusStrip from "@/components/trade/MarginStatusStrip";
 import BrokerDematPicker, { ALL_BROKERS, BROKER_DEMATS } from "@/components/trade/BrokerDematPicker";
+import EntryTimeWindow from "@/components/trade/EntryTimeWindow";
+import ExitRules from "@/components/trade/ExitRules";
+import DefaultStrategyCTA from "@/components/trade/DefaultStrategyCTA";
 import { KV2 } from "@/components/trade/shared";
 
 type Side = "B" | "S";
@@ -338,61 +341,15 @@ export default function NewStrategy() {
       )}
 
       {/* ── Default Strategy CTA — one-click safe entry ────────────────── */}
-      <section className="card"
-               style={{background:"color-mix(in srgb, var(--accent) 5%, var(--panel))"}}>
-        <div className="grid md:grid-cols-[1fr_240px] gap-5 items-center">
-          {/* Left — title + key-value strip */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Rocket size={16} className="text-[var(--accent)]"/>
-              <h2 className="font-semibold text-base">Default Strategy · Deep OTM Strangle</h2>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 text-sm">
-              <KV2 k="Spot"      v={spot.toLocaleString("en-IN")}/>
-              <KV2 k="CE strike" v={String(defaultStrikesPreview.ce)} accent/>
-              <KV2 k="PE strike" v={String(defaultStrikesPreview.pe)} accent/>
-              <KV2 k="Distance"  v={`≥ ${DEFAULT_DISTANCE_PCT}% OTM`}/>
-              <KV2 k="Lot size"  v={`${lotSize}u`}/>
-              <KV2 k="Margin/lot" v={`~₹${(marginPerLot/1000).toFixed(0)}K`}/>
-              <KV2 k="Target"    v={`₹${(DEFAULT_TARGET_PER_CR/1000).toFixed(0)}K/Cr`}/>
-              <KV2 k="Routes via" v={`${selectedBroker.toUpperCase()} · ${selectedDemats[0] ?? "—"}`}/>
-            </div>
-            <div className="text-[11px] text-[var(--muted)] mt-3">
-              Strikes round <b>further from spot</b> on the {strikeGrid}-pt grid — never closer than the rule.
-            </div>
-          </div>
-
-          {/* Right — pickers + actions */}
-          <div className="flex flex-col gap-2 md:max-w-[220px] md:mx-auto md:w-full">
-            <select className="input !py-2 text-sm"
-                    value={underlying} onChange={(e) => setUnderlying(e.target.value as "NIFTY" | "SENSEX")}>
-              <option value="NIFTY">NIFTY · lot 65</option>
-              <option value="SENSEX">SENSEX · lot 20</option>
-            </select>
-            <select id="default-lots" defaultValue="1" className="input !py-2 text-sm font-mono">
-              {[1,2,3,5,10,15,20].map(n => <option key={n} value={n}>{n} lot{n>1?"s":""} · {n*lotSize}u/leg</option>)}
-            </select>
-            <button className="btn-primary flex items-center justify-center gap-2 py-2.5"
-                    onClick={() => {
-                      const sel = document.getElementById("default-lots") as HTMLSelectElement;
-                      setPendingDefaultLots(+(sel?.value ?? "1"));
-                      setPendingExecuteAfterLoad(false);
-                      setConfirmOpen("load-default");
-                    }}>
-              <Rocket size={14}/> Load Strategy
-            </button>
-            <button className="btn-danger btn-sm flex items-center justify-center gap-1"
-                    onClick={() => {
-                      const sel = document.getElementById("default-lots") as HTMLSelectElement;
-                      setPendingDefaultLots(+(sel?.value ?? "1"));
-                      setPendingExecuteAfterLoad(true);
-                      setConfirmOpen("load-default");
-                    }}>
-              <Zap size={14}/> Load + Execute
-            </button>
-          </div>
-        </div>
-      </section>
+      <DefaultStrategyCTA
+        underlying={underlying} setUnderlying={setUnderlying}
+        spot={spot} lotSize={lotSize} strikeGrid={strikeGrid} marginPerLot={marginPerLot}
+        defaultStrikesPreview={defaultStrikesPreview}
+        selectedBroker={selectedBroker} selectedDemats={selectedDemats}
+        distancePct={DEFAULT_DISTANCE_PCT} targetPerCr={DEFAULT_TARGET_PER_CR}
+        onLoadOnly={(lots) => { setPendingDefaultLots(lots); setPendingExecuteAfterLoad(false); setConfirmOpen("load-default"); }}
+        onLoadAndExecute={(lots) => { setPendingDefaultLots(lots); setPendingExecuteAfterLoad(true); setConfirmOpen("load-default"); }}
+      />
 
       {/* ── Manual builder (hidden in default-only mode) ──────────── */}
       {defaultOnly ? null : <>
@@ -680,54 +637,11 @@ export default function NewStrategy() {
       </section>
 
       {/* Entry Time Window — gates entries to a chosen intraday window */}
-      <section className="card space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h2 className="font-semibold">Entry Time Window</h2>
-            <p className="text-[11px] text-[var(--muted)] mt-0.5">
-              Restricts entries to this intraday window (IST). Outside the window, the strategy waits or skips.
-            </p>
-          </div>
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
-            <input type="checkbox" checked={restrictByTime}
-                   onChange={(e) => setRestrictByTime(e.target.checked)}/>
-            Restrict by time
-          </label>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <div>
-            <label className="label">Entry from</label>
-            <input type="time" className="input !py-1.5 font-mono w-32"
-                   value={entryFrom} disabled={!restrictByTime}
-                   onChange={(e) => setEntryFrom(e.target.value)}/>
-          </div>
-          <div>
-            <label className="label">Entry to</label>
-            <input type="time" className="input !py-1.5 font-mono w-32"
-                   value={entryTo} disabled={!restrictByTime}
-                   onChange={(e) => setEntryTo(e.target.value)}/>
-          </div>
-          <div className="flex gap-1 flex-wrap pt-5">
-            {[
-              {label:"Open", from:"09:15", to:"09:30"},
-              {label:"Morn", from:"09:30", to:"10:30"},
-              {label:"Mid",  from:"11:00", to:"13:00"},
-              {label:"Aft",  from:"13:30", to:"14:30"},
-              {label:"All",  from:"09:15", to:"15:15"},
-            ].map(p => (
-              <button key={p.label} type="button"
-                      disabled={!restrictByTime}
-                      onClick={() => { setEntryFrom(p.from); setEntryTo(p.to); }}
-                      className="btn-ghost btn-sm !text-[10px] disabled:opacity-30">
-                {p.label} {p.from}–{p.to}
-              </button>
-            ))}
-          </div>
-        </div>
-        {!restrictByTime && (
-          <div className="text-[11px] text-[var(--muted)]">No time restriction — entries can fire anytime trigger conditions are met.</div>
-        )}
-      </section>
+      <EntryTimeWindow
+        entryFrom={entryFrom} setEntryFrom={setEntryFrom}
+        entryTo={entryTo} setEntryTo={setEntryTo}
+        restrictByTime={restrictByTime} setRestrictByTime={setRestrictByTime}
+      />
 
       {/* Premium Trigger (separate module — pairs with Strike Selector for auto trades) */}
       <section className="card space-y-3">
@@ -886,51 +800,18 @@ export default function NewStrategy() {
       </section>
 
       {/* Exit / Kill */}
-      <section className="card space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Exit Rules & Kill Switches</h2>
-          <span className="text-xs text-[var(--muted)]">Defaults from Settings → Risk</span>
-        </div>
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Field label="Stop Loss (₹)"><input className="input font-mono" value={sl} onChange={(e) => setSl(e.target.value)}/></Field>
-          <Field label="Target (₹)"><input className="input font-mono" value={target} onChange={(e) => setTarget(e.target.value)}/></Field>
-          <Field label="Square-off time (IST)"><input className="input font-mono" value={sqoff} onChange={(e) => setSqoff(e.target.value)}/></Field>
-          <Field label="MTM DD kill (% from peak)">
-            <input type="number" className="input font-mono" value={mtmDdKill} onChange={(e) => setMtmDdKill(+e.target.value)}/></Field>
-        </div>
-
-        <ToggleRow label="Trailing SL" enabled={trailingEnabled} onChange={setTrailingEnabled}>
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            <Field label="Activate after profit ₹">
-              <input className="input font-mono" value={trailingTrigger} onChange={(e) => setTrailingTrigger(e.target.value)}/></Field>
-            <Field label="Step ₹">
-              <input className="input font-mono" value={trailingStep} onChange={(e) => setTrailingStep(e.target.value)}/></Field>
-          </div>
-        </ToggleRow>
-
-        <ToggleRow label="Lock-in profits" enabled={lockinEnabled} onChange={setLockinEnabled}>
-          <Field label="When profit ≥ ₹, move SL to breakeven">
-            <input className="input font-mono" value={lockinAmount} onChange={(e) => setLockinAmount(e.target.value)}/></Field>
-        </ToggleRow>
-
-        <details className="text-xs">
-          <summary className="cursor-pointer text-[var(--muted)] hover:text-[var(--ink)]">
-            Advanced — Dead-man switch <span className="text-[10px]">(usually off · for HFT/compliance only)</span>
-          </summary>
-          <div className="mt-3 max-w-sm">
-            <Field label="Dead-man switch heartbeat (s, min 60)">
-              <input type="number" className="input font-mono" min={60}
-                     value={deadman} onChange={(e) => setDeadman(+e.target.value)}/>
-            </Field>
-            <p className="text-[11px] text-[var(--muted)] mt-2 leading-relaxed">
-              Auto-flattens positions if no heartbeat is received within this window.
-              <b> Not recommended for Deep OTM strangle</b> — your SL, MTM-DD kill,
-              and square-off time already cover unattended cases without false triggers
-              from network blips or laptop sleep. Set 0 to disable.
-            </p>
-          </div>
-        </details>
-      </section>
+      <ExitRules
+        sl={sl} setSl={setSl}
+        target={target} setTarget={setTarget}
+        sqoff={sqoff} setSqoff={setSqoff}
+        mtmDdKill={mtmDdKill} setMtmDdKill={setMtmDdKill}
+        trailingEnabled={trailingEnabled} setTrailingEnabled={setTrailingEnabled}
+        trailingTrigger={trailingTrigger} setTrailingTrigger={setTrailingTrigger}
+        trailingStep={trailingStep} setTrailingStep={setTrailingStep}
+        lockinEnabled={lockinEnabled} setLockinEnabled={setLockinEnabled}
+        lockinAmount={lockinAmount} setLockinAmount={setLockinAmount}
+        deadman={deadman} setDeadman={setDeadman}
+      />
 
       {/* Preview */}
       <section className="card space-y-3" style={{background:"var(--panel-2)"}}>
