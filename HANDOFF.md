@@ -255,34 +255,33 @@ land. Frontend hooks won't change — the contract is stable.
 
 ---
 
-## 6. Refactor progress (NewStrategy.tsx)
+## 6. Refactor progress (NewStrategy.tsx) — **−51%**
 
-Started at **1443 lines** (one file did everything). After Phase 1B + 2:
+Started at **1443 lines** (one file did everything). After Phase 1B + 2 + 3:
 
 ```
-pages/NewStrategy.tsx                   977 lines (orchestration)
+pages/NewStrategy.tsx                   708 lines (orchestration only)
 components/trade/
   ├── BrokerDematPicker.tsx             277 lines  ✅
   ├── DefaultStrategyCTA.tsx             96 lines  ✅
   ├── EntryTimeWindow.tsx                73 lines  ✅
   ├── ExitRules.tsx                      96 lines  ✅
+  ├── LegsTable.tsx                     330 lines  ✅
   ├── MarginStatusStrip.tsx              65 lines  ✅
   ├── PremiumTrigger.tsx                205 lines  ✅
-  └── shared.tsx (KV2)                   14 lines  ✅
+  ├── shared.tsx (KV2)                   14 lines  ✅
+  └── types.ts (Leg, OptType, …)         18 lines  ✅
 ```
 
-Still queued (lower priority):
-- `LegsTable.tsx` (~280 lines) — biggest remaining; expanded-quote panel
-  has nested `QuoteStat` markup that's hard to extract cleanly without
-  a state-shape pass first
+Still queued (low priority):
 - `ConfirmModals.tsx` (~200 lines) — 5 modal definitions could collapse
   into a typed dispatcher
-- `PreviewSummary.tsx` (~50 lines) — straightforward when needed
+- `PreviewSummary.tsx` (~50 lines) — easy when needed
 
 State stays in the page; subcomponents take typed props + callbacks. No
 behavioural changes from refactors. Each component owns its layout
 constants (e.g. EntryTimeWindow's PRESETS list) and helpers (Field,
-ToggleRow inside ExitRules).
+ToggleRow inside ExitRules; Section, QuoteStat, Adjust inside LegsTable).
 
 ---
 
