@@ -916,14 +916,12 @@ export default function NewStrategy() {
           <h2 className="font-semibold">Exit Rules & Kill Switches</h2>
           <span className="text-xs text-[var(--muted)]">Defaults from Settings → Risk</span>
         </div>
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Field label="Stop Loss (₹)"><input className="input font-mono" value={sl} onChange={(e) => setSl(e.target.value)}/></Field>
           <Field label="Target (₹)"><input className="input font-mono" value={target} onChange={(e) => setTarget(e.target.value)}/></Field>
           <Field label="Square-off time (IST)"><input className="input font-mono" value={sqoff} onChange={(e) => setSqoff(e.target.value)}/></Field>
           <Field label="MTM DD kill (% from peak)">
             <input type="number" className="input font-mono" value={mtmDdKill} onChange={(e) => setMtmDdKill(+e.target.value)}/></Field>
-          <Field label="Dead-man switch (s, min 60)">
-            <input type="number" className="input font-mono" min={60} value={deadman} onChange={(e) => setDeadman(+e.target.value)}/></Field>
         </div>
 
         <ToggleRow label="Trailing SL" enabled={trailingEnabled} onChange={setTrailingEnabled}>
@@ -939,6 +937,24 @@ export default function NewStrategy() {
           <Field label="When profit ≥ ₹, move SL to breakeven">
             <input className="input font-mono" value={lockinAmount} onChange={(e) => setLockinAmount(e.target.value)}/></Field>
         </ToggleRow>
+
+        <details className="text-xs">
+          <summary className="cursor-pointer text-[var(--muted)] hover:text-[var(--ink)]">
+            Advanced — Dead-man switch <span className="text-[10px]">(usually off · for HFT/compliance only)</span>
+          </summary>
+          <div className="mt-3 max-w-sm">
+            <Field label="Dead-man switch heartbeat (s, min 60)">
+              <input type="number" className="input font-mono" min={60}
+                     value={deadman} onChange={(e) => setDeadman(+e.target.value)}/>
+            </Field>
+            <p className="text-[11px] text-[var(--muted)] mt-2 leading-relaxed">
+              Auto-flattens positions if no heartbeat is received within this window.
+              <b> Not recommended for Deep OTM strangle</b> — your SL, MTM-DD kill,
+              and square-off time already cover unattended cases without false triggers
+              from network blips or laptop sleep. Set 0 to disable.
+            </p>
+          </div>
+        </details>
       </section>
 
       {/* Preview */}
