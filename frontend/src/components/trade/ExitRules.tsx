@@ -20,6 +20,12 @@ type Props = {
   lockinEnabled: boolean;   setLockinEnabled: (v: boolean) => void;
   lockinAmount: string;     setLockinAmount: (v: string) => void;
 
+  // Spot-vs-strike defensive exit (e.g. "exit CE when spot within 150pts of strike")
+  spotProximityEnabled: boolean;     setSpotProximityEnabled: (v: boolean) => void;
+  spotProximityMode: "points" | "percent"; setSpotProximityMode: (v: "points" | "percent") => void;
+  spotProximityValue: string;        setSpotProximityValue: (v: string) => void;
+  spotProximityScope: "leg" | "both"; setSpotProximityScope: (v: "leg" | "both") => void;
+
   deadman: number;       setDeadman: (v: number) => void;
 };
 
@@ -55,6 +61,62 @@ export default function ExitRules(p: Props) {
         <Field label="When profit ≥ ₹, move SL to breakeven">
           <input className="input font-mono" value={p.lockinAmount} onChange={(e) => p.setLockinAmount(e.target.value)} />
         </Field>
+      </ToggleRow>
+
+      <ToggleRow label="Exit when spot approaches strike"
+                 enabled={p.spotProximityEnabled} onChange={p.setSpotProximityEnabled}>
+        <div className="grid md:grid-cols-3 gap-3 mt-2 items-end">
+          <div>
+            <label className="label">Distance type</label>
+            <div className="inline-flex rounded-lg p-0.5 border" style={{ borderColor: "var(--border)", background: "var(--panel-2)" }}>
+              {(["points", "percent"] as const).map((m) => (
+                <button key={m} type="button" onClick={() => p.setSpotProximityMode(m)}
+                        className="px-3 py-1.5 rounded-md text-xs font-semibold transition"
+                        style={p.spotProximityMode === m
+                          ? { background: "var(--panel)", color: "var(--ink)", boxShadow: "0 1px 2px rgba(0,0,0,0.08)" }
+                          : { background: "transparent", color: "var(--muted)" }}>
+                  {m === "points" ? "Points" : "%"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Field label={p.spotProximityMode === "points"
+            ? "Exit when |spot − strike| ≤ (pts)"
+            : "Exit when |spot − strike| ÷ strike ≤ (%)"}>
+            <div className="flex items-center gap-2">
+              <input type="number" step={p.spotProximityMode === "points" ? "10" : "0.05"}
+                     className="input font-mono"
+                     placeholder={p.spotProximityMode === "points" ? "150" : "0.5"}
+                     value={p.spotProximityValue}
+                     onChange={(e) => p.setSpotProximityValue(e.target.value)} />
+              <span className="text-xs text-[var(--muted)]">{p.spotProximityMode === "points" ? "pts" : "%"}</span>
+            </div>
+          </Field>
+
+          <div>
+            <label className="label">When triggered</label>
+            <div className="inline-flex rounded-lg p-0.5 border" style={{ borderColor: "var(--border)", background: "var(--panel-2)" }}>
+              {(["leg", "both"] as const).map((m) => (
+                <button key={m} type="button" onClick={() => p.setSpotProximityScope(m)}
+                        className="px-3 py-1.5 rounded-md text-xs font-semibold transition"
+                        style={p.spotProximityScope === m
+                          ? { background: "var(--panel)", color: "var(--ink)", boxShadow: "0 1px 2px rgba(0,0,0,0.08)" }
+                          : { background: "transparent", color: "var(--muted)" }}>
+                  {m === "leg" ? "Exit that leg only" : "Exit both legs"}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <p className="text-[11px] text-[var(--muted)] mt-3 leading-relaxed">
+          <b>Example:</b> Sold CE 25,600 with proximity = 150 pts (leg-only). If spot rises
+          to 25,450, this leg auto-exits.&nbsp;
+          {p.spotProximityScope === "both" && (
+            <>If <b>Exit both</b> is selected, the PE side closes too — protects the strangle as one unit.</>
+          )}
+        </p>
       </ToggleRow>
 
       <details className="text-xs">

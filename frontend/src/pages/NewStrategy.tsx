@@ -163,6 +163,11 @@ export default function NewStrategy() {
   const [sqoff, setSqoff] = useState("15:15");
   const [deadman, setDeadman] = useState(120);
   const [mtmDdKill, setMtmDdKill] = useState(40);
+  // Spot-vs-strike defensive exit (e.g. NIFTY within 150pts of sold strike → exit that leg)
+  const [spotProximityEnabled, setSpotProximityEnabled] = useState(false);
+  const [spotProximityMode, setSpotProximityMode] = useState<"points" | "percent">("points");
+  const [spotProximityValue, setSpotProximityValue] = useState("150");
+  const [spotProximityScope, setSpotProximityScope] = useState<"leg" | "both">("leg");
 
   const lotSize = underlying === "NIFTY" ? 65 : 20;
   const freeze = underlying === "NIFTY" ? 1800 : 1000;
@@ -449,6 +454,10 @@ export default function NewStrategy() {
         trailingStep={trailingStep} setTrailingStep={setTrailingStep}
         lockinEnabled={lockinEnabled} setLockinEnabled={setLockinEnabled}
         lockinAmount={lockinAmount} setLockinAmount={setLockinAmount}
+        spotProximityEnabled={spotProximityEnabled} setSpotProximityEnabled={setSpotProximityEnabled}
+        spotProximityMode={spotProximityMode} setSpotProximityMode={setSpotProximityMode}
+        spotProximityValue={spotProximityValue} setSpotProximityValue={setSpotProximityValue}
+        spotProximityScope={spotProximityScope} setSpotProximityScope={setSpotProximityScope}
         deadman={deadman} setDeadman={setDeadman}
       />
 
