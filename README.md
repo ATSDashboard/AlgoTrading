@@ -2,17 +2,20 @@
 
 Production-grade multi-broker NIFTY/SENSEX options selling platform with enterprise RMS, OMS, and SEBI compliance.
 
-> 👉 **New here? Read [`HANDOFF.md`](./HANDOFF.md) first.** It covers product spec, trader requirements, architecture, audit findings, build instructions, and what NOT to do — in one ~25-minute doc.
+> 👉 **Building the product?** Read [**`SCOPE.md`**](./SCOPE.md) — it's the complete product spec with no code references.
+> 👉 **Reading this codebase?** Read [`HANDOFF.md`](./HANDOFF.md) — it covers architecture, audit findings, and what NOT to do.
 
 ---
 
 ## Quick links
 
-| Doc | Purpose |
-|---|---|
-| **[HANDOFF.md](./HANDOFF.md)** | **The single source of truth.** Start here. |
-| [DEVELOPER_ASSIGNMENT.md](../DEVELOPER_ASSIGNMENT.md) | One-page brief sent to the developer originally |
-| [README.md](./README.md) | This file — overview only |
+| Doc | Audience | Purpose |
+|---|---|---|
+| **[SCOPE.md](./SCOPE.md)** | Developer building the product | Full functional spec, all requirements numbered (REQ-T01..) |
+| **[HANDOFF.md](./HANDOFF.md)** | Engineer continuing this codebase | Architecture + audit + extension guide |
+| [REVIEW_GUIDE.md](./REVIEW_GUIDE.md) | Reviewers | 30-min review checklist |
+| [DEVELOPER_ASSIGNMENT.md](../DEVELOPER_ASSIGNMENT.md) | Original brief | One-page brief sent originally |
+| [README.md](./README.md) | Anyone landing on the repo | This file — overview + arch diagram |
 
 ---
 
