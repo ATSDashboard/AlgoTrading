@@ -3,7 +3,7 @@ import { useAuth } from "@/stores/auth";
 import { useTheme } from "@/stores/theme";
 import {
   Activity, FileBarChart, Settings, Shield, LogOut, PlusCircle,
-  LayoutDashboard, Sparkles, Monitor, Moon, Sun,
+  LayoutDashboard, Sparkles, Monitor, Moon, Sun, Zap,
 } from "lucide-react";
 import { useMarket, useHealth } from "@/api/hooks";
 
@@ -36,6 +36,7 @@ export default function Layout() {
             <NavLink to="/" end className={link}><LayoutDashboard size={16}/>Dashboard</NavLink>
             <NavLink to="/trade" className={link}><PlusCircle size={16}/>Trade</NavLink>
             <NavLink to="/templates" className={link}><Sparkles size={16} className="opacity-70"/>Templates</NavLink>
+            <NavLink to="/algos" className={link}><Zap size={16}/>Algos</NavLink>
             <NavLink to="/analytics" className={link}><Sparkles size={16}/>Analytics</NavLink>
             <NavLink to="/reports" className={link}><FileBarChart size={16}/>Reports</NavLink>
             <NavLink to="/settings" className={link}><Settings size={16}/>Settings</NavLink>
