@@ -18,7 +18,8 @@ import {
   ArrowDown, Calendar, Clock, Copy, Layers, Plus, RotateCcw, Save, Sparkles, Trash2, Zap,
 } from "lucide-react";
 import {
-  ALL_DAYS, AlgoConfig, RECIPE_LABELS, RECIPE_TYPES, Recipe, RecipeType, Selector, Step,
+  ALL_DAYS, AlgoConfig, ExitSpec, ManualStrike, RECIPE_LABELS, RECIPE_TYPES, Recipe, RecipeType,
+  SELECTION_MODE_LABELS, Step, StrikeSelection, StrikeSelectionMode,
   blankRecipe, manipulationHarvestTemplate, newStepId,
 } from "./types";
 import { toast } from "@/components/Toast";
@@ -277,34 +278,40 @@ function RecipeEditor({ recipe, onChange, allSteps, currentStepId }: {
         </ParamGrid>
       );
 
-    case "BUY_BASKET":
+    case "BUY":
       return (
-        <>
-          <ParamGrid>
-            <NumberParam label="Basket budget (₹)" value={recipe.budgetInr} step={500}
-                         onChange={(v) => onChange({ ...recipe, budgetInr: v })} />
-            <NumberParam label="Number of strikes" value={recipe.nStrikes} step={1}
-                         onChange={(v) => onChange({ ...recipe, nStrikes: v })} />
-            <NumberParam label="Limit offset above ask (₹)" value={recipe.limitOffset} step={0.05}
-                         onChange={(v) => onChange({ ...recipe, limitOffset: v })} />
-          </ParamGrid>
-          <SelectorEditor selector={recipe.selector}
-                          onChange={(s) => onChange({ ...recipe, selector: s })} />
-        </>
+        <div className="space-y-3">
+          <StrikeSelectionEditor selection={recipe.selection}
+                                  onChange={(s) => onChange({ ...recipe, selection: s })}
+                                  defaultPriceLabel="Buy at ₹" />
+          <div className="grid sm:grid-cols-3 gap-3">
+            <NumberParam label="Default qty per strike (lots)" value={recipe.qtyLotsDefault} step={1}
+                         onChange={(v) => onChange({ ...recipe, qtyLotsDefault: v })} />
+            <NumberParam label="Capital cap (₹) · 0 = no cap" value={recipe.capitalCapInr} step={500}
+                         onChange={(v) => onChange({ ...recipe, capitalCapInr: v })} />
+          </div>
+          <ExitEditor label="Take-profit (sell to close longs)"
+                      spec={recipe.takeProfit}
+                      onChange={(e) => onChange({ ...recipe, takeProfit: e })} />
+        </div>
       );
 
-    case "SELL_LIMITS":
+    case "SELL":
       return (
-        <>
-          <ParamGrid>
-            <NumberParam label="Multiplier × LTP at recipe start" value={recipe.multiplier} step={0.5}
-                         onChange={(v) => onChange({ ...recipe, multiplier: v })} />
-            <NumberParam label="Quantity per strike (lots)" value={recipe.qtyLots} step={5}
-                         onChange={(v) => onChange({ ...recipe, qtyLots: v })} />
-          </ParamGrid>
-          <SelectorEditor selector={recipe.selector}
-                          onChange={(s) => onChange({ ...recipe, selector: s })} />
-        </>
+        <div className="space-y-3">
+          <StrikeSelectionEditor selection={recipe.selection}
+                                  onChange={(s) => onChange({ ...recipe, selection: s })}
+                                  defaultPriceLabel="Sell limit at ₹" />
+          <div className="grid sm:grid-cols-3 gap-3">
+            <NumberParam label="Default qty per strike (lots)" value={recipe.qtyLotsDefault} step={5}
+                         onChange={(v) => onChange({ ...recipe, qtyLotsDefault: v })} />
+            <NumberParam label="Capital cap (₹) · 0 = no cap" value={recipe.capitalCapInr} step={5000}
+                         onChange={(v) => onChange({ ...recipe, capitalCapInr: v })} />
+          </div>
+          <ExitEditor label="Square-off / cover (buy back to close shorts)"
+                      spec={recipe.cover}
+                      onChange={(e) => onChange({ ...recipe, cover: e })} />
+        </div>
       );
 
     case "TAKE_PROFIT":
@@ -317,9 +324,9 @@ function RecipeEditor({ recipe, onChange, allSteps, currentStepId }: {
             <select className="input !py-1 text-xs"
                     value={recipe.appliesToStepId ?? ""}
                     onChange={(e) => onChange({ ...recipe, appliesToStepId: e.target.value || null })}>
-              <option value="">Any prior BUY_BASKET</option>
+              <option value="">Any prior BUY step</option>
               {allSteps
-                .filter((s) => s.id !== currentStepId && s.recipe.type === "BUY_BASKET")
+                .filter((s) => s.id !== currentStepId && s.recipe.type === "BUY")
                 .map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
@@ -341,59 +348,161 @@ function RecipeEditor({ recipe, onChange, allSteps, currentStepId }: {
           </div>
         </ParamGrid>
       );
-
-    case "SETTLE":
-      return (
-        <div className="flex gap-4 text-xs">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={recipe.cancelUnfilled}
-                   onChange={(e) => onChange({ ...recipe, cancelUnfilled: e.target.checked })} />
-            Cancel all unfilled orders
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={recipe.closeOpenLongs}
-                   onChange={(e) => onChange({ ...recipe, closeOpenLongs: e.target.checked })} />
-            Market-close any open longs
-          </label>
-        </div>
-      );
   }
 }
 
-function SelectorEditor({ selector, onChange }: { selector: Selector; onChange: (s: Selector) => void }) {
-  const unit = selector.metric === "percent" ? "%" : selector.metric === "points" ? "pts" : "Δ";
+// ─── Strike selection editor (5 modes) ───────────────────────────────────
+
+function StrikeSelectionEditor({ selection, onChange, defaultPriceLabel }: {
+  selection: StrikeSelection;
+  onChange: (s: StrikeSelection) => void;
+  defaultPriceLabel: string;
+}) {
+  const setMode = (mode: StrikeSelectionMode) => onChange({ ...selection, mode });
   return (
-    <div className="rounded-md border p-2.5 space-y-2"
+    <div className="rounded-md border p-3 space-y-3"
          style={{ borderColor: "var(--border)", background: "var(--panel)" }}>
-      <div className="text-[10px] uppercase tracking-wide text-[var(--muted)] flex items-center gap-1">
-        Strike selector
+      {/* Mode picker */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[10px] uppercase tracking-wide text-[var(--muted)]">Strike selection</span>
+        <div className="inline-flex rounded-md p-0.5 border flex-wrap"
+             style={{ borderColor: "var(--border)", background: "var(--panel-2)" }}>
+          {(["manual", "distance_pct", "distance_pts", "premium", "range"] as const).map((m) => (
+            <button key={m} type="button" onClick={() => setMode(m)}
+                    className="px-2.5 py-1 rounded text-[11px] font-semibold transition"
+                    style={selection.mode === m
+                      ? { background: "var(--panel)", color: "var(--ink)", boxShadow: "0 1px 2px rgba(0,0,0,0.08)" }
+                      : { background: "transparent", color: "var(--muted)" }}>
+              {SELECTION_MODE_LABELS[m]}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <select className="input !py-1 !w-28 text-xs" value={selector.metric}
-                onChange={(e) => onChange({ ...selector, metric: e.target.value as Selector["metric"] })}>
-          <option value="percent">% away</option>
-          <option value="points">Points</option>
-          <option value="delta">Delta</option>
-        </select>
+      {/* Mode-specific inputs */}
+      {selection.mode === "manual" && (
+        <ManualListEditor selection={selection} onChange={onChange} defaultPriceLabel={defaultPriceLabel} />
+      )}
+      {selection.mode === "distance_pct" && (
+        <DistanceListEditor selection={selection} onChange={onChange} unit="%" />
+      )}
+      {selection.mode === "distance_pts" && (
+        <DistanceListEditor selection={selection} onChange={onChange} unit="pts" />
+      )}
+      {selection.mode === "premium" && (
+        <PremiumModeEditor selection={selection} onChange={onChange} />
+      )}
+      {selection.mode === "range" && (
+        <RangeEditor selection={selection} onChange={onChange} />
+      )}
+    </div>
+  );
+}
 
-        <span className="text-[var(--muted)] text-xs">range</span>
-        <input type="number" step="0.1" className="input !py-1 !w-20 text-xs font-mono text-center"
-               value={selector.rangeMin}
-               onChange={(e) => onChange({ ...selector, rangeMin: +e.target.value })} />
-        <span className="text-[var(--muted)] text-xs">to</span>
-        <input type="number" step="0.1" className="input !py-1 !w-20 text-xs font-mono text-center"
-               value={selector.rangeMax}
-               onChange={(e) => onChange({ ...selector, rangeMax: +e.target.value })} />
-        <span className="text-[var(--muted)] text-xs">{unit}</span>
+function ManualListEditor({ selection, onChange, defaultPriceLabel }: {
+  selection: StrikeSelection; onChange: (s: StrikeSelection) => void; defaultPriceLabel: string;
+}) {
+  const update = (i: number, patch: Partial<ManualStrike>) =>
+    onChange({ ...selection, manual: selection.manual.map((m, j) => j === i ? { ...m, ...patch } : m) });
+  const add = () =>
+    onChange({ ...selection, manual: [...selection.manual, { side: "CE", strike: 0, price: 0, qtyLots: 0 }] });
+  const remove = (i: number) =>
+    onChange({ ...selection, manual: selection.manual.filter((_, j) => j !== i) });
 
-        <span className="text-[var(--muted)] text-xs ml-3">side</span>
+  return (
+    <div className="space-y-1.5">
+      <div className="grid grid-cols-[60px_120px_120px_100px_30px] gap-2 text-[10px] uppercase tracking-wide text-[var(--muted)] px-1">
+        <span>Type</span>
+        <span>Strike</span>
+        <span>{defaultPriceLabel.replace(" ₹","")} (₹)</span>
+        <span>Qty (lots) · 0=def</span>
+        <span></span>
+      </div>
+      {selection.manual.map((m, i) => (
+        <div key={i} className="grid grid-cols-[60px_120px_120px_100px_30px] gap-2 items-center">
+          <select className="input !py-1 text-xs" value={m.side}
+                  onChange={(e) => update(i, { side: e.target.value as "CE" | "PE" })}>
+            <option>CE</option>
+            <option>PE</option>
+          </select>
+          <input type="number" step="50" className="input !py-1 font-mono text-xs text-center"
+                 value={m.strike} onChange={(e) => update(i, { strike: +e.target.value })} placeholder="76300" />
+          <input type="number" step="0.05" className="input !py-1 font-mono text-xs text-center"
+                 value={m.price} onChange={(e) => update(i, { price: +e.target.value })} placeholder="0.05" />
+          <input type="number" step="1" className="input !py-1 font-mono text-xs text-center"
+                 value={m.qtyLots} onChange={(e) => update(i, { qtyLots: +e.target.value })} placeholder="0" />
+          <button type="button" onClick={() => remove(i)}
+                  className="text-[var(--muted)] hover:text-[var(--danger)] text-sm">×</button>
+        </div>
+      ))}
+      <button type="button" onClick={add}
+              className="btn-ghost btn-sm !text-[11px] mt-1">+ Add strike</button>
+      <p className="text-[10px] text-[var(--muted)] mt-1">
+        Example — buy: <code>PE 76300 @ 0.05</code> · <code>PE 78330 @ 0.05</code> · <code>CE 75560 @ 0.05</code> · <code>CE 78900 @ 0.10</code>
+      </p>
+    </div>
+  );
+}
+
+function DistanceListEditor({ selection, onChange, unit }: {
+  selection: StrikeSelection; onChange: (s: StrikeSelection) => void; unit: "%" | "pts";
+}) {
+  const ceField = unit === "%" ? "ce_pct" : "ce_pts";
+  const peField = unit === "%" ? "pe_pct" : "pe_pts";
+  const ceValues = unit === "%" ? selection.ce_pct : selection.ce_pts;
+  const peValues = unit === "%" ? selection.pe_pct : selection.pe_pts;
+  const setValues = (side: "ce" | "pe", values: number[]) =>
+    onChange({ ...selection, [side === "ce" ? ceField : peField]: values });
+  const parse = (s: string) =>
+    s.split(/[,\s]+/).map((x) => +x).filter((x) => !Number.isNaN(x) && x > 0);
+
+  return (
+    <div className="grid sm:grid-cols-2 gap-3">
+      <div>
+        <label className="block text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">
+          CE distances ({unit}) — comma separated
+        </label>
+        <input className="input !py-1 font-mono text-xs"
+               value={ceValues.join(", ")}
+               onChange={(e) => setValues("ce", parse(e.target.value))}
+               placeholder={unit === "%" ? "4.5, 5.0, 5.5" : "1500, 2000, 2500"} />
+      </div>
+      <div>
+        <label className="block text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">
+          PE distances ({unit}) — comma separated
+        </label>
+        <input className="input !py-1 font-mono text-xs"
+               value={peValues.join(", ")}
+               onChange={(e) => setValues("pe", parse(e.target.value))}
+               placeholder={unit === "%" ? "4.5, 5.0, 5.5" : "1500, 2000, 2500"} />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="block text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">
+          Uniform price for every strike (₹)
+        </label>
+        <input type="number" step="0.05" className="input !py-1 font-mono text-xs !w-32"
+               value={selection.uniform_price}
+               onChange={(e) => onChange({ ...selection, uniform_price: +e.target.value })} />
+      </div>
+    </div>
+  );
+}
+
+function PremiumModeEditor({ selection, onChange }: {
+  selection: StrikeSelection; onChange: (s: StrikeSelection) => void;
+}) {
+  return (
+    <div className="grid sm:grid-cols-3 gap-3">
+      <NumberParam label="Target premium (₹) — pick all strikes ≤ this" value={selection.premium_target} step={0.05}
+                   onChange={(v) => onChange({ ...selection, premium_target: v })} />
+      <div>
+        <label className="block text-[10px] font-medium mb-1 text-[var(--muted)]">Applies to side</label>
         <div className="inline-flex rounded p-0.5 border" style={{ borderColor: "var(--border)" }}>
           {(["BOTH", "CE", "PE"] as const).map((s) => (
             <button key={s} type="button"
-                    onClick={() => onChange({ ...selector, side: s })}
+                    onClick={() => onChange({ ...selection, premium_side: s })}
                     className="px-2 py-0.5 rounded text-[11px] font-semibold"
-                    style={selector.side === s
+                    style={selection.premium_side === s
                       ? { background: "var(--accent)", color: "white" }
                       : { color: "var(--muted)" }}>
               {s}
@@ -401,16 +510,107 @@ function SelectorEditor({ selector, onChange }: { selector: Selector; onChange: 
           ))}
         </div>
       </div>
+      <NumberParam label="Order price (₹)" value={selection.uniform_price} step={0.05}
+                   onChange={(v) => onChange({ ...selection, uniform_price: v })} />
+    </div>
+  );
+}
 
-      <div className="flex items-center gap-2 flex-wrap text-xs">
-        <span className="text-[var(--muted)]">filter</span>
-        <NumberFilter label="Max OI" value={selector.maxOi} step={100000}
-                      onChange={(v) => onChange({ ...selector, maxOi: v })} placeholder="off" />
-        <NumberFilter label="Min LTP ₹" value={selector.minLtp} step={0.05}
-                      onChange={(v) => onChange({ ...selector, minLtp: v })} placeholder="off" />
-        <NumberFilter label="Max LTP ₹" value={selector.maxLtp} step={0.05}
-                      onChange={(v) => onChange({ ...selector, maxLtp: v })} placeholder="off" />
+function RangeEditor({ selection, onChange }: {
+  selection: StrikeSelection; onChange: (s: StrikeSelection) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="grid sm:grid-cols-4 gap-3">
+        <div>
+          <label className="block text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">CE from</label>
+          <input type="number" step="50" className="input !py-1 font-mono text-xs"
+                 value={selection.ce_from ?? ""} placeholder="77000"
+                 onChange={(e) => onChange({ ...selection, ce_from: e.target.value === "" ? null : +e.target.value })} />
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">CE to</label>
+          <input type="number" step="50" className="input !py-1 font-mono text-xs"
+                 value={selection.ce_to ?? ""} placeholder="78000"
+                 onChange={(e) => onChange({ ...selection, ce_to: e.target.value === "" ? null : +e.target.value })} />
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">PE from</label>
+          <input type="number" step="50" className="input !py-1 font-mono text-xs"
+                 value={selection.pe_from ?? ""} placeholder="85000"
+                 onChange={(e) => onChange({ ...selection, pe_from: e.target.value === "" ? null : +e.target.value })} />
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">PE to</label>
+          <input type="number" step="50" className="input !py-1 font-mono text-xs"
+                 value={selection.pe_to ?? ""} placeholder="89000"
+                 onChange={(e) => onChange({ ...selection, pe_to: e.target.value === "" ? null : +e.target.value })} />
+        </div>
       </div>
+      <div>
+        <label className="block text-[10px] uppercase tracking-wide text-[var(--muted)] mb-1">
+          Uniform price for every strike (₹)
+        </label>
+        <input type="number" step="0.05" className="input !py-1 font-mono text-xs !w-32"
+               value={selection.uniform_price}
+               onChange={(e) => onChange({ ...selection, uniform_price: +e.target.value })} />
+      </div>
+      <p className="text-[10px] text-[var(--muted)]">
+        System enumerates every strike on the underlying's grid (NIFTY 50 / SENSEX 100) inside the range.
+        Leave a side's from/to blank to skip it.
+      </p>
+    </div>
+  );
+}
+
+// ─── Exit spec editor (used by BUY's TP and SELL's cover) ────────────────
+
+function ExitEditor({ label, spec, onChange }: {
+  label: string; spec: ExitSpec; onChange: (e: ExitSpec) => void;
+}) {
+  return (
+    <div className="rounded-md border p-2.5 space-y-2"
+         style={{ borderColor: "var(--border)", background: "var(--panel)" }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[10px] uppercase tracking-wide text-[var(--muted)]">{label}</span>
+        <div className="inline-flex rounded-md p-0.5 border"
+             style={{ borderColor: "var(--border)", background: "var(--panel-2)" }}>
+          {(["absolute", "multiplier", "none"] as const).map((m) => (
+            <button key={m} type="button"
+                    onClick={() => {
+                      if (m === "absolute") onChange({ mode: "absolute", price: 3 });
+                      else if (m === "multiplier") onChange({ mode: "multiplier", x: 10 });
+                      else onChange({ mode: "none" });
+                    }}
+                    className="px-2.5 py-1 rounded text-[11px] font-semibold transition"
+                    style={spec.mode === m
+                      ? { background: "var(--panel)", color: "var(--ink)", boxShadow: "0 1px 2px rgba(0,0,0,0.08)" }
+                      : { background: "transparent", color: "var(--muted)" }}>
+              {m === "absolute" ? "At ₹ price" : m === "multiplier" ? "× entry avg" : "Don't auto-exit"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {spec.mode === "absolute" && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--muted)]">Price</span>
+          <input type="number" step="0.05" className="input !py-1 !w-32 font-mono text-sm"
+                 value={spec.price} onChange={(e) => onChange({ mode: "absolute", price: +e.target.value })} />
+          <span className="text-xs text-[var(--muted)]">₹</span>
+        </div>
+      )}
+      {spec.mode === "multiplier" && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--muted)]">Multiplier</span>
+          <input type="number" step="0.5" className="input !py-1 !w-24 font-mono text-sm"
+                 value={spec.x} onChange={(e) => onChange({ mode: "multiplier", x: +e.target.value })} />
+          <span className="text-xs text-[var(--muted)]">× entry</span>
+        </div>
+      )}
+      {spec.mode === "none" && (
+        <p className="text-[11px] text-[var(--muted)]">No auto-exit — position runs to expiry or until manually closed.</p>
+      )}
     </div>
   );
 }
@@ -432,17 +632,6 @@ function NumberParam({ label, value, step, onChange }:
   );
 }
 
-function NumberFilter({ label, value, step, placeholder, onChange }:
-  { label: string; value: number | null; step: number; placeholder: string; onChange: (v: number | null) => void }) {
-  return (
-    <div className="flex items-center gap-1">
-      <span className="text-[var(--muted)]">{label}</span>
-      <input type="number" step={step} className="input !py-1 !w-24 text-xs font-mono"
-             value={value ?? ""} placeholder={placeholder}
-             onChange={(e) => onChange(e.target.value === "" ? null : +e.target.value)} />
-    </div>
-  );
-}
 
 // ─── Add Step + Hard rules ───────────────────────────────────────────────
 

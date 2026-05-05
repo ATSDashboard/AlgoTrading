@@ -1,78 +1,132 @@
 /** Custom Algo Builder — domain types. */
 
 export type Side = "CE" | "PE" | "BOTH";
-export type DistanceMetric = "percent" | "points" | "delta";
 
-export interface Selector {
-  metric: DistanceMetric;
-  rangeMin: number;     // e.g. 4.5
-  rangeMax: number;     // e.g. 5.5
-  side: Side;
-  maxOi: number | null;     // skip strikes more liquid than this
-  minLtp: number | null;    // skip strikes below this premium
-  maxLtp: number | null;    // skip strikes above this premium
+// ─── Strike selection ────────────────────────────────────────────────────
+// 5 ways to pick strikes for a BUY or SELL recipe.
+//
+//   manual      — explicit list of strikes ("buy 76300PE, 78330PE, 75560CE")
+//   distance_pct — list of % distances ("CE +4.5%, +5.0%, +5.5%")
+//   distance_pts — list of point distances ("CE +1500, +2000")
+//   premium     — pick all strikes with LTP ≤ target ("everything ≤ ₹0.05")
+//   range       — strike range, system fills every grid step
+//                 ("CE 77000–78000, PE 85000–89000")
+
+export type StrikeSelectionMode = "manual" | "distance_pct" | "distance_pts" | "premium" | "range";
+
+export interface ManualStrike {
+  side: "CE" | "PE";
+  strike: number;
+  price: number;        // entry price for this leg (buy or sell limit)
+  qtyLots: number;      // optional override; 0 = use recipe default
 }
+
+export interface StrikeSelection {
+  mode: StrikeSelectionMode;
+
+  // mode=manual
+  manual: ManualStrike[];
+
+  // mode=distance_pct  (e.g. ce_values = [4.5, 5.0, 5.5])
+  ce_pct: number[];
+  pe_pct: number[];
+
+  // mode=distance_pts
+  ce_pts: number[];
+  pe_pts: number[];
+
+  // mode=premium (target ₹ — system selects all strikes with LTP <= target)
+  premium_target: number;
+  premium_side: Side;
+
+  // mode=range — system enumerates strikes on the grid between from..to
+  ce_from: number | null;
+  ce_to: number | null;
+  pe_from: number | null;
+  pe_to: number | null;
+
+  // For non-manual modes, a single uniform entry price applies to every strike.
+  uniform_price: number;
+}
+
+export function blankStrikeSelection(opts?: Partial<StrikeSelection>): StrikeSelection {
+  return {
+    mode: "manual",
+    manual: [],
+    ce_pct: [], pe_pct: [],
+    ce_pts: [], pe_pts: [],
+    premium_target: 0.05,
+    premium_side: "BOTH",
+    ce_from: null, ce_to: null,
+    pe_from: null, pe_to: null,
+    uniform_price: 0.05,
+    ...opts,
+  };
+}
+
+// ─── Recipes ─────────────────────────────────────────────────────────────
 
 export const RECIPE_TYPES = [
   "MARGIN_RECYCLE",
-  "BUY_BASKET",
-  "SELL_LIMITS",
+  "BUY",
+  "SELL",
   "TAKE_PROFIT",
   "SPIKE_MONITOR",
-  "SETTLE",
 ] as const;
 
 export type RecipeType = typeof RECIPE_TYPES[number];
 
+// Take-profit / square-off spec — used inside BUY (TP) and SELL (cover).
+export type ExitSpec =
+  | { mode: "absolute"; price: number }      // exit at exact ₹ price
+  | { mode: "multiplier"; x: number }        // exit at x × entry avg
+  | { mode: "none" };                        // never auto-exit (let it expire)
+
 export type Recipe =
   | {
       type: "MARGIN_RECYCLE";
-      closePct: number;            // e.g. 20
-      qualifyingMaxLtp: number;    // e.g. 0.10
-      qualifyingMinDistPct: number;// e.g. 2.5
+      closePct: number;
+      qualifyingMaxLtp: number;
+      qualifyingMinDistPct: number;
     }
   | {
-      type: "BUY_BASKET";
-      budgetInr: number;           // total ₹ across the basket
-      nStrikes: number;            // 5
-      selector: Selector;
-      limitOffset: number;         // ₹ above ask for fill
+      type: "BUY";
+      selection: StrikeSelection;
+      qtyLotsDefault: number;        // when manual.qtyLots = 0 OR non-manual mode
+      capitalCapInr: number;          // 0 = no cap; otherwise total ₹ stops here
+      takeProfit: ExitSpec;           // sell to close longs
     }
   | {
-      type: "SELL_LIMITS";
-      multiplier: number;          // × LTP at recipe start
-      qtyLots: number;             // per strike
-      selector: Selector;
+      type: "SELL";
+      selection: StrikeSelection;
+      qtyLotsDefault: number;
+      capitalCapInr: number;          // notional ₹ exposure cap (e.g. 1,00,000)
+      cover: ExitSpec;                // buy-to-cover at this price (or "none")
     }
   | {
       type: "TAKE_PROFIT";
-      tpMultiplier: number;        // × buy avg
-      appliesToStepId: string | null;  // referenced step
+      tpMultiplier: number;
+      appliesToStepId: string | null;
     }
   | {
       type: "SPIKE_MONITOR";
-      thresholdMultiplier: number; // alert when LTP ≥ X × baseline
+      thresholdMultiplier: number;
       pollIntervalSec: number;
-      baselineFromTime: string;    // HH:MM — record baseline at this time
-    }
-  | {
-      type: "SETTLE";
-      cancelUnfilled: boolean;
-      closeOpenLongs: boolean;
+      baselineFromTime: string;
     };
 
 export interface Step {
   id: string;
   name: string;
-  startTime: string;   // HH:MM
-  endTime: string;     // HH:MM
+  startTime: string;
+  endTime: string;
   recipe: Recipe;
 }
 
 export interface AlgoConfig {
   name: string;
   instrument: "NIFTY" | "SENSEX";
-  days: string[];           // ["MON","TUE",…]
+  days: string[];
   windowStart: string;
   windowEnd: string;
   steps: Step[];
@@ -88,33 +142,61 @@ export const ALL_DAYS = ["MON", "TUE", "WED", "THU", "FRI"] as const;
 
 export const RECIPE_LABELS: Record<RecipeType, string> = {
   MARGIN_RECYCLE: "Margin recycle",
-  BUY_BASKET:     "BUY basket",
-  SELL_LIMITS:    "SELL LIMITs",
-  TAKE_PROFIT:    "Take-profit",
+  BUY:            "BUY (with TP)",
+  SELL:           "SELL LIMITs (with cover)",
+  TAKE_PROFIT:    "Take-profit (link to step)",
   SPIKE_MONITOR:  "Spike monitor",
-  SETTLE:         "Settle / cleanup",
 };
 
-const blankSelector = (): Selector => ({
-  metric: "percent", rangeMin: 4.5, rangeMax: 5.5, side: "BOTH",
-  maxOi: 2_000_000, minLtp: 0.05, maxLtp: 0.50,
-});
+export const SELECTION_MODE_LABELS: Record<StrikeSelectionMode, string> = {
+  manual:        "Manual list",
+  distance_pct:  "% away from spot",
+  distance_pts:  "Points away from spot",
+  premium:       "Target premium ₹",
+  range:         "Strike range",
+};
 
 let _stepId = 1;
 export const newStepId = () => `step-${_stepId++}`;
 
 export function blankRecipe(type: RecipeType): Recipe {
   switch (type) {
-    case "MARGIN_RECYCLE": return { type, closePct: 20, qualifyingMaxLtp: 0.10, qualifyingMinDistPct: 2.5 };
-    case "BUY_BASKET":     return { type, budgetInr: 12500, nStrikes: 5, selector: blankSelector(), limitOffset: 0.05 };
-    case "SELL_LIMITS":    return { type, multiplier: 12, qtyLots: 20, selector: { ...blankSelector(), rangeMin: 3.0, rangeMax: 5.5, maxOi: 3_000_000 } };
-    case "TAKE_PROFIT":    return { type, tpMultiplier: 10, appliesToStepId: null };
-    case "SPIKE_MONITOR":  return { type, thresholdMultiplier: 5, pollIntervalSec: 30, baselineFromTime: "14:00" };
-    case "SETTLE":         return { type, cancelUnfilled: true, closeOpenLongs: true };
+    case "MARGIN_RECYCLE":
+      return { type, closePct: 20, qualifyingMaxLtp: 0.10, qualifyingMinDistPct: 2.5 };
+    case "BUY":
+      return {
+        type,
+        selection: blankStrikeSelection({
+          mode: "distance_pct",
+          ce_pct: [4.5, 5.0, 5.5],
+          pe_pct: [4.5, 5.0, 5.5],
+          uniform_price: 0.05,
+        }),
+        qtyLotsDefault: 5,
+        capitalCapInr: 12500,
+        takeProfit: { mode: "absolute", price: 3 },
+      };
+    case "SELL":
+      return {
+        type,
+        selection: blankStrikeSelection({
+          mode: "distance_pct",
+          ce_pct: [3.0, 3.5, 4.0, 4.5, 5.0, 5.5],
+          pe_pct: [3.0, 3.5, 4.0, 4.5, 5.0, 5.5],
+          uniform_price: 4.0,
+        }),
+        qtyLotsDefault: 20,
+        capitalCapInr: 100000,
+        cover: { mode: "absolute", price: 0.05 },
+      };
+    case "TAKE_PROFIT":
+      return { type, tpMultiplier: 10, appliesToStepId: null };
+    case "SPIKE_MONITOR":
+      return { type, thresholdMultiplier: 5, pollIntervalSec: 30, baselineFromTime: "14:00" };
   }
 }
 
-/** Manipulation Harvest expressed as the canonical 6-step composition. */
+/** Manipulation Harvest expressed using the new recipe shapes. */
 export function manipulationHarvestTemplate(): AlgoConfig {
   return {
     name: "Manipulation Harvest · v1",
@@ -123,18 +205,14 @@ export function manipulationHarvestTemplate(): AlgoConfig {
     windowStart: "14:00",
     windowEnd: "15:25",
     steps: [
-      { id: newStepId(), name: "Margin recycle",  startTime: "14:00", endTime: "14:30",
+      { id: newStepId(), name: "Margin recycle", startTime: "14:00", endTime: "14:30",
         recipe: blankRecipe("MARGIN_RECYCLE") },
-      { id: newStepId(), name: "Play D basket",   startTime: "14:00", endTime: "14:30",
-        recipe: blankRecipe("BUY_BASKET") },
-      { id: newStepId(), name: "Sell limits",     startTime: "14:30", endTime: "15:00",
-        recipe: blankRecipe("SELL_LIMITS") },
-      { id: newStepId(), name: "Take-profits",    startTime: "14:30", endTime: "15:00",
-        recipe: { type: "TAKE_PROFIT", tpMultiplier: 10, appliesToStepId: null } },
-      { id: newStepId(), name: "Spike monitor",   startTime: "15:00", endTime: "15:25",
+      { id: newStepId(), name: "Play D basket", startTime: "14:00", endTime: "14:30",
+        recipe: blankRecipe("BUY") },
+      { id: newStepId(), name: "Sell limits", startTime: "14:30", endTime: "15:00",
+        recipe: blankRecipe("SELL") },
+      { id: newStepId(), name: "Spike monitor", startTime: "15:00", endTime: "15:25",
         recipe: blankRecipe("SPIKE_MONITOR") },
-      { id: newStepId(), name: "Settle",          startTime: "15:25", endTime: "15:25",
-        recipe: blankRecipe("SETTLE") },
     ],
     hardRules: {
       maxCapitalInr: 15000,
