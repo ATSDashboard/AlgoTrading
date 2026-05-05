@@ -1,24 +1,26 @@
 /**
- * Custom Algo Builder — interactive composer for multi-step algorithmic strategies.
+ * Custom Algo Builder — compose multi-step algos from just BUY and SELL steps.
  *
- * An algo is a stack of typed steps. Each step has:
- *   - A name and time-window within the algo's daily window
- *   - A recipe: BUY_BASKET / SELL_LIMITS / MARGIN_RECYCLE / TAKE_PROFIT / SPIKE_MONITOR / SETTLE
- *   - (For BUY_BASKET / SELL_LIMITS) a Selector that picks strikes
- *   - Recipe-specific params
+ * An algo is:
+ *   schedule (day-of-week + daily time window) + ordered steps + hard rules.
  *
- * Pre-loaded with the Manipulation Harvest template (6 steps) so the user
- * sees a working example. They can clone, tweak, and save as a new algo.
+ * A step is:
+ *   { name, start time, end time, recipe }
  *
- * State stays in this component for now; persistence + backend hooks are
- * Phase D — the JSON shape in `types.ts` is the contract.
+ * A recipe is one of:
+ *   BUY  — strike selection + qty + capital cap + take-profit
+ *   SELL — strike selection + qty + capital cap + cover (square-off)
+ *
+ * Strike selection has 5 modes (manual list / % distance / pts distance /
+ * target premium / strike range). Premium can be uniform or per-leg
+ * (per-leg by using Manual mode and setting price on each row).
  */
 import { useState } from "react";
 import {
   ArrowDown, Calendar, Clock, Copy, Layers, Plus, RotateCcw, Save, Sparkles, Trash2, Zap,
 } from "lucide-react";
 import {
-  ALL_DAYS, AlgoConfig, ExitSpec, ManualStrike, RECIPE_LABELS, RECIPE_TYPES, Recipe, RecipeType,
+  ALL_DAYS, AlgoConfig, ExitSpec, ManualStrike, Recipe, RecipeType,
   SELECTION_MODE_LABELS, Step, StrikeSelection, StrikeSelectionMode,
   blankRecipe, manipulationHarvestTemplate, newStepId,
 } from "./types";
@@ -48,7 +50,7 @@ export default function CustomAlgoBuilder() {
         ...a.steps,
         {
           id: newStepId(),
-          name: RECIPE_LABELS[type],
+          name: type === "BUY" ? "Buy step" : "Sell step",
           startTime: a.windowStart,
           endTime: a.windowEnd,
           recipe: blankRecipe(type),
@@ -85,7 +87,6 @@ export default function CustomAlgoBuilder() {
             <div key={step.id}>
               <StepCard
                 step={step} index={i} totalSteps={algo.steps.length}
-                allSteps={algo.steps}
                 onUpdate={(patch) => updateStep(step.id, patch)}
                 onUpdateRecipe={(r) => updateRecipe(step.id, r)}
                 onMoveUp={() => moveStep(step.id, -1)}
@@ -205,8 +206,8 @@ function ScheduleEditor({ algo, updateAlgo }: { algo: AlgoConfig; updateAlgo: (p
   );
 }
 
-function StepCard({ step, index, totalSteps, allSteps, onUpdate, onUpdateRecipe, onMoveUp, onMoveDown, onDuplicate, onRemove }: {
-  step: Step; index: number; totalSteps: number; allSteps: Step[];
+function StepCard({ step, index, totalSteps, onUpdate, onUpdateRecipe, onMoveUp, onMoveDown, onDuplicate, onRemove }: {
+  step: Step; index: number; totalSteps: number;
   onUpdate: (p: Partial<Step>) => void;
   onUpdateRecipe: (r: Recipe) => void;
   onMoveUp: () => void; onMoveDown: () => void;
@@ -218,7 +219,11 @@ function StepCard({ step, index, totalSteps, allSteps, onUpdate, onUpdateRecipe,
       {/* Step header */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-[10px] font-bold w-14 text-[var(--muted)]">STEP {index + 1}</span>
-        <input className="input !py-1 !w-44 text-sm font-semibold"
+        <span className="px-2 py-0.5 rounded text-xs font-bold text-white"
+              style={{ background: step.recipe.type === "BUY" ? "var(--success)" : "var(--danger)" }}>
+          {step.recipe.type}
+        </span>
+        <input className="input !py-1 !w-48 text-sm font-semibold"
                value={step.name} onChange={(e) => onUpdate({ name: e.target.value })} />
         <span className="text-[var(--muted)] text-xs">·</span>
         <input type="time" className="input !py-1 !w-24 font-mono text-xs"
@@ -226,22 +231,17 @@ function StepCard({ step, index, totalSteps, allSteps, onUpdate, onUpdateRecipe,
         <span className="text-[var(--muted)] text-xs">to</span>
         <input type="time" className="input !py-1 !w-24 font-mono text-xs"
                value={step.endTime} onChange={(e) => onUpdate({ endTime: e.target.value })} />
-        <span className="text-[var(--muted)] text-xs">·</span>
-        <select className="input !py-1 !w-44 text-xs" value={step.recipe.type}
-                onChange={(e) => onUpdateRecipe(blankRecipe(e.target.value as RecipeType))}>
-          {RECIPE_TYPES.map((t) => <option key={t} value={t}>{RECIPE_LABELS[t]}</option>)}
-        </select>
 
         <div className="flex gap-0.5 ml-auto">
-          <IconBtn title="Move up"  disabled={index === 0}                  icon="↑" onClick={onMoveUp} />
-          <IconBtn title="Move down" disabled={index === totalSteps - 1}    icon="↓" onClick={onMoveDown} />
-          <IconBtn title="Duplicate"                                         onClick={onDuplicate}><Copy size={13} /></IconBtn>
-          <IconBtn title="Remove" danger                                     onClick={onRemove}><Trash2 size={13} /></IconBtn>
+          <IconBtn title="Move up"  disabled={index === 0}                icon="↑" onClick={onMoveUp} />
+          <IconBtn title="Move down" disabled={index === totalSteps - 1}  icon="↓" onClick={onMoveDown} />
+          <IconBtn title="Duplicate"                                       onClick={onDuplicate}><Copy size={13} /></IconBtn>
+          <IconBtn title="Remove" danger                                   onClick={onRemove}><Trash2 size={13} /></IconBtn>
         </div>
       </div>
 
       {/* Recipe-specific editor */}
-      <RecipeEditor recipe={step.recipe} onChange={onUpdateRecipe} allSteps={allSteps} currentStepId={step.id} />
+      <RecipeEditor recipe={step.recipe} onChange={onUpdateRecipe} />
     </div>
   );
 }
@@ -262,93 +262,43 @@ function IconBtn({ title, onClick, disabled, danger, icon, children }: {
 
 // ─── Recipe editors ──────────────────────────────────────────────────────
 
-function RecipeEditor({ recipe, onChange, allSteps, currentStepId }: {
-  recipe: Recipe; onChange: (r: Recipe) => void; allSteps: Step[]; currentStepId: string;
+function RecipeEditor({ recipe, onChange }: {
+  recipe: Recipe; onChange: (r: Recipe) => void;
 }) {
-  switch (recipe.type) {
-    case "MARGIN_RECYCLE":
-      return (
-        <ParamGrid>
-          <NumberParam label="Close % of qualifying shorts" value={recipe.closePct} step={5}
-                       onChange={(v) => onChange({ ...recipe, closePct: v })} />
-          <NumberParam label="Min distance OTM (%)" value={recipe.qualifyingMinDistPct} step={0.1}
-                       onChange={(v) => onChange({ ...recipe, qualifyingMinDistPct: v })} />
-          <NumberParam label="Max LTP to qualify (₹)" value={recipe.qualifyingMaxLtp} step={0.05}
-                       onChange={(v) => onChange({ ...recipe, qualifyingMaxLtp: v })} />
-        </ParamGrid>
-      );
-
-    case "BUY":
-      return (
-        <div className="space-y-3">
-          <StrikeSelectionEditor selection={recipe.selection}
-                                  onChange={(s) => onChange({ ...recipe, selection: s })}
-                                  defaultPriceLabel="Buy at ₹" />
-          <div className="grid sm:grid-cols-3 gap-3">
-            <NumberParam label="Default qty per strike (lots)" value={recipe.qtyLotsDefault} step={1}
-                         onChange={(v) => onChange({ ...recipe, qtyLotsDefault: v })} />
-            <NumberParam label="Capital cap (₹) · 0 = no cap" value={recipe.capitalCapInr} step={500}
-                         onChange={(v) => onChange({ ...recipe, capitalCapInr: v })} />
-          </div>
-          <ExitEditor label="Take-profit (sell to close longs)"
-                      spec={recipe.takeProfit}
-                      onChange={(e) => onChange({ ...recipe, takeProfit: e })} />
+  if (recipe.type === "BUY") {
+    return (
+      <div className="space-y-3">
+        <StrikeSelectionEditor selection={recipe.selection}
+                                onChange={(s) => onChange({ ...recipe, selection: s })}
+                                defaultPriceLabel="Buy at ₹" />
+        <div className="grid sm:grid-cols-2 gap-3">
+          <NumberParam label="Default qty per strike (lots)" value={recipe.qtyLotsDefault} step={1}
+                       onChange={(v) => onChange({ ...recipe, qtyLotsDefault: v })} />
+          <NumberParam label="Capital cap (₹) · 0 = no cap" value={recipe.capitalCapInr} step={500}
+                       onChange={(v) => onChange({ ...recipe, capitalCapInr: v })} />
         </div>
-      );
-
-    case "SELL":
-      return (
-        <div className="space-y-3">
-          <StrikeSelectionEditor selection={recipe.selection}
-                                  onChange={(s) => onChange({ ...recipe, selection: s })}
-                                  defaultPriceLabel="Sell limit at ₹" />
-          <div className="grid sm:grid-cols-3 gap-3">
-            <NumberParam label="Default qty per strike (lots)" value={recipe.qtyLotsDefault} step={5}
-                         onChange={(v) => onChange({ ...recipe, qtyLotsDefault: v })} />
-            <NumberParam label="Capital cap (₹) · 0 = no cap" value={recipe.capitalCapInr} step={5000}
-                         onChange={(v) => onChange({ ...recipe, capitalCapInr: v })} />
-          </div>
-          <ExitEditor label="Square-off / cover (buy back to close shorts)"
-                      spec={recipe.cover}
-                      onChange={(e) => onChange({ ...recipe, cover: e })} />
-        </div>
-      );
-
-    case "TAKE_PROFIT":
-      return (
-        <ParamGrid>
-          <NumberParam label="TP multiplier × buy avg" value={recipe.tpMultiplier} step={0.5}
-                       onChange={(v) => onChange({ ...recipe, tpMultiplier: v })} />
-          <div>
-            <label className="block text-[10px] font-medium mb-1 text-[var(--muted)]">Applies to step</label>
-            <select className="input !py-1 text-xs"
-                    value={recipe.appliesToStepId ?? ""}
-                    onChange={(e) => onChange({ ...recipe, appliesToStepId: e.target.value || null })}>
-              <option value="">Any prior BUY step</option>
-              {allSteps
-                .filter((s) => s.id !== currentStepId && s.recipe.type === "BUY")
-                .map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-        </ParamGrid>
-      );
-
-    case "SPIKE_MONITOR":
-      return (
-        <ParamGrid>
-          <NumberParam label="Spike threshold × baseline" value={recipe.thresholdMultiplier} step={0.5}
-                       onChange={(v) => onChange({ ...recipe, thresholdMultiplier: v })} />
-          <NumberParam label="Poll interval (sec)" value={recipe.pollIntervalSec} step={5}
-                       onChange={(v) => onChange({ ...recipe, pollIntervalSec: v })} />
-          <div>
-            <label className="block text-[10px] font-medium mb-1 text-[var(--muted)]">Baseline taken at</label>
-            <input type="time" className="input !py-1 font-mono text-xs"
-                   value={recipe.baselineFromTime}
-                   onChange={(e) => onChange({ ...recipe, baselineFromTime: e.target.value })} />
-          </div>
-        </ParamGrid>
-      );
+        <ExitEditor label="Take-profit (sell to close)"
+                    spec={recipe.takeProfit}
+                    onChange={(e) => onChange({ ...recipe, takeProfit: e })} />
+      </div>
+    );
   }
+  return (
+    <div className="space-y-3">
+      <StrikeSelectionEditor selection={recipe.selection}
+                              onChange={(s) => onChange({ ...recipe, selection: s })}
+                              defaultPriceLabel="Sell limit at ₹" />
+      <div className="grid sm:grid-cols-2 gap-3">
+        <NumberParam label="Default qty per strike (lots)" value={recipe.qtyLotsDefault} step={5}
+                     onChange={(v) => onChange({ ...recipe, qtyLotsDefault: v })} />
+        <NumberParam label="Capital cap (₹) · 0 = no cap" value={recipe.capitalCapInr} step={5000}
+                     onChange={(v) => onChange({ ...recipe, capitalCapInr: v })} />
+      </div>
+      <ExitEditor label="Square-off / cover (buy back to close)"
+                  spec={recipe.cover}
+                  onChange={(e) => onChange({ ...recipe, cover: e })} />
+    </div>
+  );
 }
 
 // ─── Strike selection editor (5 modes) ───────────────────────────────────
@@ -637,13 +587,15 @@ function NumberParam({ label, value, step, onChange }:
 
 function AddStepRow({ onAdd }: { onAdd: (t: RecipeType) => void }) {
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
-      {RECIPE_TYPES.map((t) => (
-        <button key={t} type="button" onClick={() => onAdd(t)}
-                className="btn-ghost btn-sm flex items-center gap-1 !text-[11px]">
-          <Plus size={11} /> {RECIPE_LABELS[t]}
-        </button>
-      ))}
+    <div className="mt-3 flex flex-wrap gap-2">
+      <button type="button" onClick={() => onAdd("BUY")}
+              className="btn-primary btn-sm flex items-center gap-1.5">
+        <Plus size={12} /> Add BUY step
+      </button>
+      <button type="button" onClick={() => onAdd("SELL")}
+              className="btn-danger btn-sm flex items-center gap-1.5">
+        <Plus size={12} /> Add SELL step
+      </button>
     </div>
   );
 }
