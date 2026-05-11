@@ -13,6 +13,7 @@ Production-grade multi-broker NIFTY/SENSEX options selling platform with enterpr
 |---|---|---|
 | **[SCOPE.md](./SCOPE.md)** | Developer building the product | Full functional spec, all requirements numbered (REQ-T01..) |
 | **[HANDOFF.md](./HANDOFF.md)** | Engineer continuing this codebase | Architecture + audit + extension guide |
+| **[WORK_SUMMARY.md](./WORK_SUMMARY.md)** | Anyone catching up | Everything built across all sessions, current state of repo |
 | [REVIEW_GUIDE.md](./REVIEW_GUIDE.md) | Reviewers | 30-min review checklist |
 | [DEVELOPER_ASSIGNMENT.md](../DEVELOPER_ASSIGNMENT.md) | Original brief | One-page brief sent originally |
 | [README.md](./README.md) | Anyone landing on the repo | This file — overview + arch diagram |
