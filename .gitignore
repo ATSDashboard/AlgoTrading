@@ -17,8 +17,6 @@ build/
 .vite/
 
 # Secrets / env
-.env
-.env.local
 .env.*.local
 !.env.example
 
@@ -27,9 +25,9 @@ build/
 *.log
 
 # IDE
-.vscode/
 .idea/
 
 # DB
 *.sqlite
 *.db
+config.bat
