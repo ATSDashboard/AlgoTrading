@@ -17,8 +17,6 @@ build/
 .vite/
 
 # Secrets / env
-.env
-.env.local
 .env.*.local
 !.env.example
 
@@ -33,3 +31,4 @@ build/
 # DB
 *.sqlite
 *.db
+config.bat
