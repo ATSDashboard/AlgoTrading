@@ -13,8 +13,18 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
     <meta name="apple-mobile-web-app-title" content="Theta Gainers"/>
     <script>
+      // PWA service worker — only register in production builds.
+      // In dev, also actively kill any previously-registered SW so the
+      // browser stops serving the cached offline.html when Vite restarts.
       if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+        const isProd = window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1";
+        if (isProd) {
+          window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+        } else {
+          // Unregister any stale SW + drop its caches so dev hot-reload works
+          navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
+          if (window.caches) caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+        }
       }
     </script>
   </head>
